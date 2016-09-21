@@ -1,0 +1,88 @@
+---
+title: "explore aso data with snow persistence"
+author: "Dominik Schneider"
+date: "September 14, 2016"
+output: html_document
+---
+
+
+```{r libraries}
+library(raster)
+library(rgdal)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(viridis)
+library(broom)
+```
+
+```{r setup}
+inpath='data/swe'
+geoarea2='tuo'
+ires='500m'
+```
+
+```{r load_data}
+asofn=dir('data/swe',pattern=glob2rx(paste0(geoarea2,'_',ires,'_*.tif$')),full.names=T)
+aso_stack=stack(asofn)
+
+avgdate_rast=raster('data/snowoffdate/tuo_avgdate.tif')
+
+fscafn <- dir('data/fsca/modscag/utm',pattern=glob2rx(paste0('fsca_',ires,'_',geoarea2,'_*.tif$')),full.names=T)
+fscadtes <- strftime(strptime(sapply(strsplit(basename(fscafn),'[.\\_]'),'[',4),'%Y%j'),'%Y%m%d')
+fscaind <- which(fscadtes %in% unique(asoswe$dte))
+fsca_stack <- stack(fscafn[fscaind])
+```
+
+```{r combine_data}
+asoswe <- as.data.frame(aso_stack,xy=T) %>%
+  tbl_df %>%
+  bind_cols(as.data.frame(avgdate_rast)) %>%
+  rename(avgdate=tuo_avgdate) %>%
+  gather(dte,swe,-x,-y,-avgdate) %>%
+  separate(dte,into=c('basin','res','dte')) %>%
+  filter(!is.na(avgdate),swe>0)
+
+fscadf=as.data.frame(fsca_stack,xy=T) %>%
+  gather(dte,fsca,-x,-y) %>%
+  separate(dte,into=c('var','ires','basin','dte')) %>%
+  select(-var) %>%
+  mutate(dte=strftime(strptime(dte,'%Y%j'),'%Y%m%d')) %>%
+  tbl_df
+
+dat=asoswe %>%
+  inner_join(fscadf) %>%
+  filter(fsca>0)
+
+```
+
+```{r}
+dat %>% 
+  arrange(fsca) %>% 
+  filter(fsca<100) %>% 
+ggplot(.,aes(x=avgdate,y=swe))+
+  geom_point(aes(color=fsca))+
+  facet_wrap(~dte,scales='free_y')+
+  scale_color_viridis(guide='colorbar')
+```
+
+```{r}
+dat %>% 
+  arrange(avgdate) %>% 
+  filter(fsca<100) %>% 
+  group_by(dte) %>% 
+  sample_frac(.5) %>% 
+ggplot(.,aes(x=fsca,y=swe))+
+  geom_point(aes(color=avgdate))+
+  facet_wrap(~dte)+
+  scale_color_viridis(guide='colorbar')
+```
+
+```{r}
+dat %>% 
+  arrange(fsca) %>% 
+ggplot(.,aes(x=avgdate*fsca,y=swe))+
+  geom_point(aes(color=fsca))+
+  facet_wrap(~dte,scales='free_y')+
+  scale_color_viridis(guide='colorbar')
+```
