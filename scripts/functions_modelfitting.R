@@ -1,5 +1,17 @@
 # Data Collation ----
-get_phvdata=function(geoarea2,ires,phv_stack,fscasource){
+get_phvdata=function(geoarea2,ires,phv_stack,a1,fscasource){
+
+  p1=as.data.frame(phv_stack,xy=T) %>%
+    tbl_df %>%
+    gather(phvvar,phvval,-x,-y) %>%
+    mutate(phvvar=sapply(strsplit(phvvar,'_',fixed=T),'[',2),
+           phvvar=gsub('[0-9]+m$','',phvvar)) %>%
+    spread(phvvar,phvval)
+
+  phvswe <-
+    inner_join(a1,p1)
+
+
   if(fscasource=='modscag') {
     fscafn <- dir('data/fsca/modscag/utm',pattern=glob2rx(paste0('fsca_',ires,'_',geoarea2,'_*.tif$')),full.names=T)
     fscadtes <- strftime(strptime(sapply(strsplit(basename(fscafn),'[.\\_]'),'[',4),'%Y%j'),'%Y%m%d')
@@ -13,29 +25,13 @@ get_phvdata=function(geoarea2,ires,phv_stack,fscasource){
   #replace names in stack with %Y%m%d (in case they aren't like from modscag)
   names(fsca_stack)  <- sapply(seq_along(names(fsca_stack)),function(x) gsub('[0-9]+$',names(fsca_stack)[x],fscadtes[x]))
 
-  a1=as.data.frame(aso_stack,xy=T) %>%
-    tbl_df %>%
-    gather(dte,swe,-x,-y) %>%
-    separate(dte,into=c('basin','res','dte')) %>%
-    filter(!is.na(swe))
-
-  p1=as.data.frame(phv_stack,xy=T) %>%
-    tbl_df %>%
-    gather(phvvar,phvval,-x,-y) %>%
-    mutate(phvvar=sapply(strsplit(phvvar,'_',fixed=T),'[',2),
-           phvvar=gsub('[0-9]+m$','',phvvar)) %>%
-    spread(phvvar,phvval)
-
-  asoswe <-
-    inner_join(a1,p1)
-
   fscadf=as.data.frame(fsca_stack,xy=T) %>%
     gather(dte,fsca,-x,-y) %>%
     separate(dte,into=c('var','ires','basin','dte')) %>%
     dplyr::select(-var,-ires) %>%
     tbl_df
 
-  dat=asoswe %>%
+  dat=phvswe %>%
     inner_join(fscadf) %>%
     filter(fsca>0)
 
