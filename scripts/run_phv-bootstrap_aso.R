@@ -12,37 +12,40 @@ library(rpart)
 source('scripts/functions_modelfitting.R')
 
 geoarea2='tuo'
-ires='500m'
+ires='100m'
+fscasource='aso'#needs to be aso if ires < 500m
 
 asofn=dir('data/swe',pattern=glob2rx(paste0(geoarea2,'_',ires,'_*.tif$')),full.names=T)
 aso_stack=stack(asofn)
 asoswedates=sapply(strsplit(names(aso_stack),'[.\\_]'),'[',3)
 
 ## phv variables ---
-elev_rast=raster('data/elevation/tuo_dem500m.tif')
-zness_rast=raster('data/elevation/tuo_zness500m.tif')
-northness_rast=raster('data/elevation/tuo_northness500m.tif')
-eastness_rast=raster('data/elevation/tuo_eastness500m.tif')
+elev_rast=raster(paste0('data/elevation/',geoarea2,'_dem',ires,'.tif'))
+zness_rast=raster(paste0('data/elevation/',geoarea2,'_zness',ires,'.tif'))
+northness_rast=raster(paste0('data/elevation/',geoarea2,'_northness',ires,'.tif'))
+eastness_rast=raster(paste0('data/elevation/',geoarea2,'_eastness',ires,'.tif'))
 
-tpi_rast=raster('data/elevation/tuo_tpi500m.tif')
-vrm_rast=raster('data/elevation/tuo_vrm1cell_dem500m.tif')
+tpi_rast=raster(paste0('data/elevation/',geoarea2,'_tpi',ires,'.tif'))
+# tri_rast=raster(paste0('data/elevation/',basin,'_tri',ires,'.tif'))
+vrm_rast=raster(paste0('data/elevation/',geoarea2,'_vrm1cell_dem',ires,'.tif'))
 
-northing_rast=raster('data/elevation/tuo_northing500m.tif')
-easting_rast=raster('data/elevation/tuo_easting500m.tif')
+northing_rast=raster(paste0('data/elevation/',geoarea2,'_northing',ires,'.tif'))
+easting_rast=raster(paste0('data/elevation/',geoarea2,'_easting',ires,'.tif'))
 
-vegheight_rast=raster('data/veg/tuo_vegheight_500m.tif')
+vegheight_rast=raster(paste0('data/veg/',geoarea2,'_vegheight',ires,'.tif'))
 
-stdslope_rast=raster('data/elevation/tuo_stdslope1cell_dem500m.tif')
+stdslope_rast=raster(paste0('data/elevation/',geoarea2,'_stdslope1cell_dem',ires,'.tif'))
 ## ---
 
 phv_stack=stack(elev_rast,zness_rast,stdslope_rast,vrm_rast,northness_rast,eastness_rast,northing_rast,easting_rast,vegheight_rast)
-phvdata=get_phvdata(geoarea2,ires,phv_stack) %>%
+phvdata=get_phvdata(geoarea2,ires,phv_stack,fscasource) %>%
   filter(complete.cases(.)) %>%
   mutate(yr=substr(dte,1,4))
 
 sens=0
 # for(sens in seq_len(7)){
 
+if(fscasource=='modscag'){
 imageyrs=unique(phvdata$yr)
 avgdate_rast=stack(paste0('data/snowoffdate/tuo_snowoff_X',imageyrs,'.tif'))
 adrast=as.data.frame(avgdate_rast,xy=T) %>%
@@ -52,7 +55,9 @@ adrast=as.data.frame(avgdate_rast,xy=T) %>%
   mutate(yr=as.character(readr::parse_number(yr)))
 
 alldata=inner_join(phvdata,adrast,by=c('x','y','yr'))
-
+} else {
+  alldata=phvdata
+}
 asoswe=as.data.frame(aso_stack,xy=T) %>%
   tbl_df %>%
   gather(asodte,asoswe,-x,-y) %>%
@@ -124,8 +129,10 @@ allasomdls <-
 
 parallel::stopCluster(cl)
 
-saveRDS(allphvmdls,paste0('output/allphvmdls_phv-bootstrap_aso_',ires,'.rds'))
-saveRDS(allasomdls,paste0('output/allasomdls_phv-bootstrap_aso_',ires,'.rds'))
+saveRDS(allphvmdls %>% dplyr::select(dte,.id,train,test),paste0('output/allphvmdls-splitsamples_phv-bootstrap_aso_',ires,'.rds'))
+saveRDS(allphvmdls %>% dplyr::select(-train,-test),paste0('output/allphvmdls_phv-bootstrap_aso_',ires,'.rds'))
+saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,train,test),paste0('output/allasomdls-splitsamples_phv-bootstrap_aso_',ires,'.rds'))
+saveRDS(allasomdls %>% dplyr::select(-train,-test),paste0('output/allasomdls_phv-bootstrap_aso_',ires,'.rds'))
 
 
 
