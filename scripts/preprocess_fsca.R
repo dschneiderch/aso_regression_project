@@ -1,9 +1,8 @@
 library(raster)
-
-## - modscag-historic fsca
 geoarea2='tuo'
 ires='500m'
 
+## - modscag-historic fsca - always 500m ----
 fn_fsca=dir('data/fsca/modscag/raw/sinu',pattern=glob2rx(paste0('^',geoarea2,'*.tif$')),full.names=TRUE)
 dte_str=sapply(strsplit(x=basename(fn_fsca),split='[_//.]'),'[',2)
 datesOI <- which(substr(dte_str,5,7)<245)#245 is through end of august
@@ -26,23 +25,14 @@ names(fsca_stack) <- fs_names
 writeRaster(fsca_stack,filename='data/fsca/modscag/utm/fsca_500m.tif',bylayer=TRUE,suffix='names',overwrite=T,NAflag=-99)
 
 
-## symlinks of modscag images for aso flight dates
-asofn=dir('data/swe',pattern=glob2rx(paste0(geoarea2,'_',ires,'_*.tif$')),full.names=T)
-asoswedates=sapply(strsplit(names(aso_stack),'[.\\_]'),'[',3)
-asd_yj=strftime(strptime(asoswedates,'%Y%m%d'),'%Y%j')
-asodteind=which(dte_str %in% asd_yj)
-for(f in fn_fsca[asodteind]){
-  dte=strftime(strptime(unlist(strsplit(basename(f),'[_\\.]'))[4],'%Y%j'),'%Y%m%d')
-  newf=paste0('fsca_500m_tuo_',dte,'.tif')
-  file.symlink(f,paste0('data/fsca/modscag/',newf))
-}
-
-
-## - aso 501m fsca created in snowdepth-predict_project from 3m snowdepth
+## - aso 51m, 99m and 501m fsca created in snowdepth-predict_project from 3m snowdepth ----
 # resample to 500 m
-dir.create('data/fsca/aso/500m',recursive = TRUE)
-basinmask=raster('data/gis/tuo_basinmask_500m.tif')
-asofsca_fn=dir('data/fsca/aso/501m',pattern=glob2rx('fsca*.tif$'),full.names = T)
+oldres=99
+newres=100
+dir.create(paste0('data/fsca/aso/utm/',newres,'m'),recursive = TRUE)
+basinmask=raster(paste0('data/gis/tuo_basinmask_',newres,'m.tif'))
+asofsca_fn=dir(paste0('data/fsca/aso/utm/',oldres,'m'),pattern=glob2rx('fsca*.tif$'),full.names = T)
 asofsca=stack(asofsca_fn)
-asofsca500 <- resample(asofsca,basinmask,method='ngb')
-writeRaster(asofsca500,filename='data/fsca/aso/500m/tuo.tif',bylayer=T,suffix='names',NAflag=-99,overwrite=T)
+asofsca_new <- resample(asofsca,basinmask,method='ngb')
+names(asofsca_new) <- gsub('fsca','tuo',names(asofsca_new))
+writeRaster(asofsca_new,filename=paste0('data/fsca/aso/utm/',newres,'m/fsca_',newres,'m.tif'),bylayer=T,suffix='names',NAflag=-99,overwrite=T)
