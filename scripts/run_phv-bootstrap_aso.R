@@ -15,11 +15,20 @@ geoarea2='tuo'
 ires='100m'
 fscasource='aso'#needs to be aso if ires < 500m
 
+
+## aso swe ----
 asofn=dir('data/swe',pattern=glob2rx(paste0(geoarea2,'_',ires,'_*.tif$')),full.names=T)
 aso_stack=stack(asofn)
 asoswedates=sapply(strsplit(names(aso_stack),'[.\\_]'),'[',3)
 
-## phv variables ---
+asoswe=as.data.frame(aso_stack,xy=T) %>%
+  tbl_df %>%
+  gather(dte,swe,-x,-y) %>%
+  separate(dte,into=c('basin','res','dte')) %>%
+  filter(!is.na(swe))
+
+
+## phv variables ----
 elev_rast=raster(paste0('data/elevation/',geoarea2,'_dem',ires,'.tif'))
 zness_rast=raster(paste0('data/elevation/',geoarea2,'_zness',ires,'.tif'))
 northness_rast=raster(paste0('data/elevation/',geoarea2,'_northness',ires,'.tif'))
@@ -35,34 +44,35 @@ easting_rast=raster(paste0('data/elevation/',geoarea2,'_easting',ires,'.tif'))
 vegheight_rast=raster(paste0('data/veg/',geoarea2,'_vegheight',ires,'.tif'))
 
 stdslope_rast=raster(paste0('data/elevation/',geoarea2,'_stdslope1cell_dem',ires,'.tif'))
-## ---
+# ---
 
 phv_stack=stack(elev_rast,zness_rast,stdslope_rast,vrm_rast,northness_rast,eastness_rast,northing_rast,easting_rast,vegheight_rast)
-phvdata=get_phvdata(geoarea2,ires,phv_stack,fscasource) %>%
+phvdata=get_phvdata(geoarea2,ires,phv_stack,asoswe,fscasource) %>%
   filter(complete.cases(.)) %>%
   mutate(yr=substr(dte,1,4))
+
+# change names for iterating over patterns
+asoswe <- asoswe %>%
+  rename(asoswe=swe,
+         asodte=dte)
 
 sens=0
 # for(sens in seq_len(7)){
 
 if(fscasource=='modscag'){
-imageyrs=unique(phvdata$yr)
-avgdate_rast=stack(paste0('data/snowoffdate/tuo_snowoff_X',imageyrs,'.tif'))
-adrast=as.data.frame(avgdate_rast,xy=T) %>%
-  tbl_df %>%
-  gather(yr,snowoff,-x,-y) %>%
-  # separate(yr,into=c('geoarea2','var','yr')) %>%
-  mutate(yr=as.character(readr::parse_number(yr)))
+  imageyrs=unique(phvdata$yr)
+  avgdate_rast=stack(paste0('data/snowoffdate/tuo_snowoff_X',imageyrs,'.tif'))
+  adrast=as.data.frame(avgdate_rast,xy=T) %>%
+    tbl_df %>%
+    gather(yr,snowoff,-x,-y) %>%
+    # separate(yr,into=c('geoarea2','var','yr')) %>%
+    mutate(yr=as.character(readr::parse_number(yr)))
 
-alldata=inner_join(phvdata,adrast,by=c('x','y','yr'))
+  alldata=inner_join(phvdata,adrast,by=c('x','y','yr'))
 } else {
   alldata=phvdata
 }
-asoswe=as.data.frame(aso_stack,xy=T) %>%
-  tbl_df %>%
-  gather(asodte,asoswe,-x,-y) %>%
-  separate(asodte,into=c('basin','res','asodte')) %>%
-  filter(!is.na(asoswe))
+
 
 # cl=parallel::makePSOCKcluster(4)
 # test1=cv.glmnet(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+snowoff+fsca,data=alldata[1:500,],type.measure='mse',alpha=0.3)
@@ -76,13 +86,12 @@ asoswe=as.data.frame(aso_stack,xy=T) %>%
 #   fit=rpart(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+fsca,data=alldata,method='anova',cp=0.03,xval=10)
 # }
 
-
 cl <- parallel::makePSOCKcluster(8)
 allphvmdls <-
   alldata %>%
   group_by(dte) %>%
   nest() %>%
-  mutate(straps=map(data,crossv_mc,2)) %>%
+  mutate(straps=map(data,crossv_mc,40)) %>%
   unnest(straps) %>%
   mutate(
     phv_obj_glmmdl=map(train,gnet_phv,cl),
@@ -129,11 +138,19 @@ allasomdls <-
 
 parallel::stopCluster(cl)
 
-saveRDS(allphvmdls %>% dplyr::select(dte,.id,train,test),paste0('output/allphvmdls-splitsamples_phv-bootstrap_aso_',ires,'.rds'))
-saveRDS(allphvmdls %>% dplyr::select(-train,-test),paste0('output/allphvmdls_phv-bootstrap_aso_',ires,'.rds'))
-saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,train,test),paste0('output/allasomdls-splitsamples_phv-bootstrap_aso_',ires,'.rds'))
-saveRDS(allasomdls %>% dplyr::select(-train,-test),paste0('output/allasomdls_phv-bootstrap_aso_',ires,'.rds'))
+pathout='output/phv-bootstrap_aso/'
+if(!dir.exists(pathout)) dir.create(pathout,recursive=TRUE)
+saveRDS(allphvmdls %>% dplyr::select(dte,.id,train,test),paste0(pathout,'phvmdls_splitsamples_',ires,'.rds'))
+saveRDS(allphvmdls %>% dplyr::select(dte,.id,contains('obj')),paste0(pathout,'phvmdls_mdlobjs_',ires,'.rds'))
+saveRDS(allphvmdls %>% dplyr::select(-train,-test,-contains('obj')),paste0(pathout,'phvmdls_errorstats_',ires,'.rds'))
 
+saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,train,test),paste0(pathout,'asomdls_splitsamples_',ires,'.rds'))
+saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,contains('obj')),paste0(pathout,'asomdls_mdlobjs_',ires,'.rds'))
+saveRDS(allasomdls %>% dplyr::select(-train,-test,-contains('obj')),paste0(pathout,'asomdls_errorstats_',ires,'.rds'))
+
+# saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,train,test),paste0('output/allasomdls-splitsamples_phv-bootstrap_aso_',ires,'.rds'))
+# saveRDS(allasomdls %>% dplyr::select(-train,-test),paste0('output/allasomdls_phv-bootstrap_aso_',ires,'.rds'))
+# saveRDS(allasomdls %>% dplyr::select(-train,-test),paste0('output/allasomdls_phv-bootstrap_aso_',ires,'.rds'))
 
 
 # }    # <------ uncomment to run sensitivity
