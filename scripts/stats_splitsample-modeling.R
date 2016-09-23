@@ -1,23 +1,59 @@
+library(raster)
+library(rgdal)
+library(tidyverse)
+library(cowplot)
+library(viridis)
+library(broom)
+
 ires='500m'
 basin='tuo'
+pathin='output/phv-bootstrap_aso/'
 
-allphvmdls=readRDS(paste0('output/allphvmdls_phv-bootstrap_aso_',ires,'.rds'))
-allasomdls=readRDS(paste0('output/allasomdls_phv-bootstrap_aso_',ires,'.rds'))
+alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
+phvmdls=readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds'))
+asomdls=readRDS(paste0(pathin,'asomdls_augment_',ires,'.rds'))
 
+allaug=phvmdls
 
-totalmdls <- full_join(allphvmdls %>% dplyr::select(-train,-test),allasomdls %>% dplyr::select(-train,-test))
-# saveRDS(totalmdls,'output/phv-bootstrap_aso.rds')
+extractAug <- function(allaug,mdlpreds,mdldtype){
+  coln <- paste(mdlpreds,'aug',mdltype,sep='_')
+  allaug %>%
+    group_by(dte) %>%
+    unnest_(coln) %>%
+    # gather(var,val,swe:resid) %>%
+    mutate(mdlpreds,mdltype)
 
+}
+
+mdlpreds='phv'
+mdltype='glmmdl'
+phv=extractAug(allaug,'phv','glmmdl')
+phvfsca=extractAug(allaug,'phvfsca','glmmdl')
+
+r2=function(dF){
+  cor(dF$swe,dF$swehat)^2
+}
+pctmae=function(dF){
+  mean(abs(dF$swehat-dF$swe),na.rm=T)/mean(dF$swe,na.rm=T)*100
+}
+
+predictions=bind_rows(phv,phvfsca)
 mdlstats <-
-  totalmdls %>%
-  dplyr::select(dte,asodte,.id,contains('r2'),contains('pctmae')) %>%
-  gather(metricvar, metricval,-dte,-asodte,-.id) %>%
-  separate(metricvar,into=c('mdlpreds','metricvar','mdltype')) %>%
-  mutate(yr=substr(dte,1,4))
+  predictions %>%
+  group_by(dte,mdlpreds,mdltype) %>%
+  nest() %>%
+  mutate(r2=map_dbl(data, r2),
+        pctmae=map_dbl(data, pctmae),
+        yr=substr(dte,1,4)
+)
 
-mdlstats2 <-
-  mdlstats %>%
-  filter(dte!=asodte)
+alldata
+mdlstats
+
+mdlstats2 <- mdlstats %>%
+  gather(metricvar,metricval,r2,pctmae)
+  # mdlstats %>%
+  # filter(dte!=asodte)
 
 mdlstats2 %>%
   group_by(mdlpreds,metricvar) %>%
@@ -25,6 +61,9 @@ mdlstats2 %>%
     avg=median(metricval),
     N=n()
   )
+
+
+
 
 mdlstats2 %>%
   # filter(metricvar!='r2') %>%
@@ -91,7 +130,7 @@ for(iyr in unique(mdlstats2$yr)){
     # filter( !(metricvar=='r2' & metricval>1)) %>%
     # filter(metricvar!='r2') %>%
     ggplot(data=.) +
-    geom_boxplot(aes(x=as.factor(dte),y=metricval,colour=mdltype,fill=mdlpreds))+
+    geom_boxplot(aes(x=as.factor(dte),y=metricval,colour=mdlpreds,fill=mdlpreds))+
     scale_fill_brewer(palette='Set1',guide=F)+
     scale_colour_manual(values=c('black','grey80','grey30'),guide=F)+
     # facet_grid(metricvar~.,scales='free')+
@@ -110,7 +149,7 @@ for(iyr in unique(mdlstats2$yr)){
     # filter( !(metricvar=='r2' & metricval>1)) %>%
     # filter(metricvar!='r2') %>%
     ggplot(data=.) +
-    geom_boxplot(aes(x=as.factor(dte),y=metricval,colour=mdltype,fill=mdlpreds))+
+    geom_boxplot(aes(x=as.factor(dte),y=metricval,colour=mdlpreds,fill=mdlpreds))+
     scale_fill_brewer(palette='Set1')+
     scale_colour_manual(values=c('black','grey80','grey30'))+
     labs(y='Mean Absolute Error [%]')+
