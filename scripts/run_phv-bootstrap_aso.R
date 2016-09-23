@@ -91,7 +91,7 @@ allphvmdls <-
   alldata %>%
   group_by(dte) %>%
   nest() %>%
-  mutate(straps=map(data,crossv_mc,40)) %>%
+  mutate(straps=map(data,crossv_mc,2)) %>%
   unnest(straps) %>%
   mutate(
     phv_obj_glmmdl=map(train,gnet_phv,cl),
@@ -103,25 +103,26 @@ allphvmdls <-
     phvfsca_pctmae_glmmdl=map2_dbl(phvfsca_obj_glmmdl,test,mypctmae)
   )
 
+
+pathout='output/phv-bootstrap_aso/'
+if(!dir.exists(pathout)) dir.create(pathout,recursive=TRUE)
+saveRDS(allphvmdls %>% dplyr::select(dte,.id,train,test),paste0(pathout,'phvmdls_splitsamples_',ires,'.rds'))
+saveRDS(allphvmdls %>% dplyr::select(dte,.id,contains('obj')),paste0(pathout,'phvmdls_mdlobjs_',ires,'.rds'))
+saveRDS(allphvmdls %>% dplyr::select(-train,-test,-contains('obj')),paste0(pathout,'phvmdls_errorstats_',ires,'.rds'))
+
 # asoswe=asoswe %>% filter(asodte %in% unique(asodte)[5:9])
 # allphvmdls <- allphvmdls %>% filter(.id=='01'|.id=='02')
 ## need to join aso swe data for asoswe models. doing phv separately before so it isn't fitting models on sets of the same data
-resamp_data <-
-  allphvmdls %>%
-  group_by(dte,.id) %>%
-  dplyr::select(dte,.id,train,test) %>%
-  mutate(
-    train=map(train,join_asodata,asoswe),
-    test=map(test,join_asodata,asoswe)
-  )
 
+allmdldata <- allphvmdls %>% select(dte,.id,train,test)
+rm(allphvmdls)
 
 allasomdls <-
-  resamp_data %>%
+  allmdldata %>%
   group_by(dte,.id) %>%
   mutate(
-    phvaso_obj_glmmdl=map(train,gnet_phvaso,cl),
-    phvasofsca_obj_glmmdl=map(train,gnet_phvasofsca,cl)
+    phvaso_obj_glmmdl=map(train,gnet_phvaso,join_asodata,asoswe,cl),
+    phvasofsca_obj_glmmdl=map(train,gnet_phvasofsca,join_asodata,asoswe,cl)
   ) %>%
   unnest(phvaso_obj_glmmdl,phvasofsca_obj_glmmdl,.drop=FALSE)
 
@@ -138,11 +139,6 @@ allasomdls <-
 
 parallel::stopCluster(cl)
 
-pathout='output/phv-bootstrap_aso/'
-if(!dir.exists(pathout)) dir.create(pathout,recursive=TRUE)
-saveRDS(allphvmdls %>% dplyr::select(dte,.id,train,test),paste0(pathout,'phvmdls_splitsamples_',ires,'.rds'))
-saveRDS(allphvmdls %>% dplyr::select(dte,.id,contains('obj')),paste0(pathout,'phvmdls_mdlobjs_',ires,'.rds'))
-saveRDS(allphvmdls %>% dplyr::select(-train,-test,-contains('obj')),paste0(pathout,'phvmdls_errorstats_',ires,'.rds'))
 
 saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,train,test),paste0(pathout,'asomdls_splitsamples_',ires,'.rds'))
 saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,contains('obj')),paste0(pathout,'asomdls_mdlobjs_',ires,'.rds'))
