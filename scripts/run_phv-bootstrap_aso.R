@@ -86,7 +86,7 @@ if(fscasource=='modscag'){
 #   fit=rpart(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+fsca,data=alldata,method='anova',cp=0.03,xval=10)
 # }
 
-cl <- parallel::makePSOCKcluster(8)
+cl <- parallel::makePSOCKcluster(4)
 allphvmdls <-
   alldata %>%
   group_by(dte) %>%

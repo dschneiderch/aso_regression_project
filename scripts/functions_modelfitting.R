@@ -158,12 +158,16 @@ gnet_phvfscasp=function(dF,cl=cl){
 }
 
 augmentEnet=function(model,data){
+  realdata=as.data.frame(data)
+  x=realdata[['x']]
+  y=realdata[['y']]
+
   yvar=all.vars(formula(model)[[2]])
-  yobs=as.data.frame(data)[[yvar]]
+  yobs=realdata[[yvar]]
 
   yhat=as.numeric(predict(model,newdata=data))
   resid=yhat-yobs
-  data_frame(yobs,yhat,resid) %>% setNames(c(yvar,paste0(yvar,'hat'),'resid'))
+  data_frame(x,y,yobs,yhat,resid) %>% setNames(c('x','y',yvar,paste0(yvar,'hat'),'resid'))
 }
 
 # regression tree ----
