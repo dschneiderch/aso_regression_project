@@ -113,24 +113,28 @@ gnet_phvfsca=function(dF,cl=cl){
   return(cvfit)
 }
 
-gnet_phvaso=function(dF,join_asodata,asoswe2,cl=cl){
+gnet_phvaso=function(dF,join_asodata,asoswe2,cl=cl,bestasodte=NULL){
   myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+asoswe)
   wrap_cvnet=function(dF,bestalpha,myformula) cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = TRUE)
 
- join_asodata(dF,asoswe2) %>%
+  if(!is.null(bestasodte)) asoswe2=filter(asoswe2,asodte %in% bestasodte)
+
+  join_asodata(dF,asoswe2) %>%
     group_by(asodte) %>%
     nest %>%
     mutate(
       bestalpha=map_dbl(data,pickAlpha,myformula,cl),
       phvaso_obj_glmmdl=map2(data,bestalpha,wrap_cvnet,myformula)
     ) %>%
-   dplyr::select(asodte,phvaso_obj_glmmdl)
+    dplyr::select(asodte,phvaso_obj_glmmdl)
 
 }
 
-gnet_phvasofsca=function(dF,join_asodata,asoswe2,cl=cl){
+gnet_phvasofsca=function(dF,join_asodata,asoswe2,cl=cl,bestasodte=NULL){
   myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+asoswe+fsca)
   wrap_cvnet=function(dF,bestalpha,myformula) cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = TRUE)
+
+  if(!is.null(bestasodte)) asoswe2=filter(asoswe2,asodte %in% bestasodte)
 
   join_asodata(dF,asoswe2) %>%
     group_by(asodte) %>%
@@ -161,13 +165,14 @@ augmentEnet=function(model,data){
   realdata=as.data.frame(data)
   x=realdata[['x']]
   y=realdata[['y']]
+  simdte=realdata[['dte']]
 
   yvar=all.vars(formula(model)[[2]])
   yobs=realdata[[yvar]]
 
   yhat=as.numeric(predict(model,newdata=data))
-  resid=yhat-yobs
-  data_frame(x,y,yobs,yhat,resid) %>% setNames(c('x','y',yvar,paste0(yvar,'hat'),'resid'))
+  # resid=yhat-yobs
+  data_frame(simdte,x,y,yobs,yhat) %>% setNames(c('simdte','x','y',yvar,paste0(yvar,'hat')))
 }
 
 # regression tree ----
