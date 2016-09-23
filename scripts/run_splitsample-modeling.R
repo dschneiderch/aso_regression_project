@@ -14,7 +14,8 @@ source('scripts/functions_modelfitting.R')
 geoarea2='tuo'
 ires='100m'
 fscasource='aso'#needs to be aso if ires < 500m
-
+pathout='output/splitsample-modeling'
+dir.create(pathout,recursive=TRUE)
 
 ## aso swe ----
 asofn=dir('data/swe',pattern=glob2rx(paste0(geoarea2,'_',ires,'_*.tif$')),full.names=T)
@@ -74,17 +75,6 @@ if(fscasource=='modscag'){
 }
 
 
-# cl=parallel::makePSOCKcluster(4)
-# test1=cv.glmnet(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+snowoff+fsca,data=alldata[1:500,],type.measure='mse',alpha=0.3)
-# str(test1)
-# test1$alpha=.3
-# predict(test1,head(alldata))
-# predict
-
-# rpartfitting_phv(alldata)
-# rpartfitting_phv=function(dF){
-#   fit=rpart(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+fsca,data=alldata,method='anova',cp=0.03,xval=10)
-# }
 
 cl <- parallel::makePSOCKcluster(4)
 allphvmdls <-
@@ -103,11 +93,11 @@ allphvmdls <-
     phvfsca_coef_glmmdl=map(phvfsca_obj_glmmdl,coef)
   )
 
+print('phv models finished.')
 
-pathout='output/phv-bootstrap_aso/'
-if(!dir.exists(pathout)) dir.create(pathout,recursive=TRUE)
 saveRDS(alldata,paste0(pathout,'alldata_',ires,'.rds'))
-saveRDS(allphvmdls %>% select(-contains('obj')), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
+saveRDS(allphvmdls %>% select(-contains('coef'),-contains('obj')), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
+saveRDS(allphvmdls %>% select(-contains('aug'),-contains('obj')), paste0(pathout,'phvmdls_coef_',ires,'.rds'))
 
 # asoswe=asoswe %>% filter(asodte %in% unique(asodte)[5:9])
 # allphvmdls <- allphvmdls %>% filter(.id=='01'|.id=='02')
@@ -127,18 +117,21 @@ allasomdls <-
 
 if(!identical(allasomdls[[5]],allasomdls[[7]])) stop()
 
+print('phvaso models finished.')
+
 allasomdls <-
   allasomdls[!duplicated(as.list(allasomdls))] %>%
   mutate(
-    phvaso_aug_glmmdl=map2_dbl(phvaso_obj_glmmdl,test,augmentEnet),
+    phvaso_aug_glmmdl=map2(phvaso_obj_glmmdl,test,augmentEnet),
     phvaso_coef_glmmdl=map(phvaso_obj_glmmdl,coef),
-    phvasofsca_aug_glmmdl=map2_dbl(phvasofsca_obj_glmmdl,test,augmentEnet),
+    phvasofsca_aug_glmmdl=map2(phvasofsca_obj_glmmdl,test,augmentEnet),
     phvasofsca_coef_glmmdl=map(phvasofsca_obj_glmmdl,coef)
   )
 
 parallel::stopCluster(cl)
 
-saveRDS(allphvmdls %>% select(-contains('obj')), paste0(pathout,'asomdls_augment_',ires,'.rds'))
+saveRDS(allasomdls %>% select(-contains('coef'),-contains('obj')), paste0(pathout,'asomdls_augment_',ires,'.rds'))
+saveRDS(allasomdls %>% select(-contains('aug'),-contains('obj')), paste0(pathout,'asomdls_coef_',ires,'.rds'))
 
 
 # }    # <------ uncomment to run sensitivity
