@@ -157,11 +157,11 @@ gnet_phvfscasp=function(dF,cl=cl){
   return(cvfit)
 }
 
-augmentEnet=function(model,data,bestalpha){
+augmentEnet=function(model,data){
   yvar=all.vars(formula(model)[[2]])
   yobs=as.data.frame(data)[[yvar]]
 
-  yhat=predict(model,newdata=data,alpha=bestalpha)
+  yhat=as.numeric(predict(model,newdata=data))
   resid=yhat-yobs
   data_frame(yobs,yhat,resid) %>% setNames(c(yvar,paste0(yvar,'hat'),'resid'))
 }

@@ -95,20 +95,19 @@ allphvmdls <-
   unnest(straps) %>%
   mutate(
     phv_obj_glmmdl=map(train,gnet_phv,cl),
-    phv_r2_glmmdl=map2_dbl(phv_obj_glmmdl,test,myr2),
-    phv_pctmae_glmmdl=map2_dbl(phv_obj_glmmdl,test,mypctmae),
+    phv_aug_glmmdl=map2(phv_obj_glmmdl,test,augmentEnet),
+    phv_coef_glmmdl=map(phv_obj_glmmdl,coef),
     #
     phvfsca_obj_glmmdl=map(train,gnet_phvfsca,cl),
-    phvfsca_r2_glmmdl=map2_dbl(phvfsca_obj_glmmdl,test,myr2),
-    phvfsca_pctmae_glmmdl=map2_dbl(phvfsca_obj_glmmdl,test,mypctmae)
+    phvfsca_aug_glmmdl=map2(phvfsca_obj_glmmdl,test,augmentEnet),
+    phvfsca_coef_glmmdl=map(phvfsca_obj_glmmdl,coef)
   )
 
 
 pathout='output/phv-bootstrap_aso/'
 if(!dir.exists(pathout)) dir.create(pathout,recursive=TRUE)
-saveRDS(allphvmdls %>% dplyr::select(dte,.id,train,test),paste0(pathout,'phvmdls_splitsamples_',ires,'.rds'))
-saveRDS(allphvmdls %>% dplyr::select(dte,.id,contains('obj')),paste0(pathout,'phvmdls_mdlobjs_',ires,'.rds'))
-saveRDS(allphvmdls %>% dplyr::select(-train,-test,-contains('obj')),paste0(pathout,'phvmdls_errorstats_',ires,'.rds'))
+saveRDS(alldata,paste0(pathout,'alldata_',ires,'.rds'))
+saveRDS(allphvmdls %>% select(-contains('obj')), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
 
 # asoswe=asoswe %>% filter(asodte %in% unique(asodte)[5:9])
 # allphvmdls <- allphvmdls %>% filter(.id=='01'|.id=='02')
@@ -131,22 +130,15 @@ if(!identical(allasomdls[[5]],allasomdls[[7]])) stop()
 allasomdls <-
   allasomdls[!duplicated(as.list(allasomdls))] %>%
   mutate(
-    phvaso_r2_glmmdl=map2_dbl(phvaso_obj_glmmdl,test,myr2),
-    phvaso_pctmae_glmmdl=map2_dbl(phvaso_obj_glmmdl,test,mypctmae),
-    phvasofsca_r2_glmmdl=map2_dbl(phvasofsca_obj_glmmdl,test,myr2),
-    phvasofsca_pctmae_glmmdl=map2_dbl(phvasofsca_obj_glmmdl,test,mypctmae)
+    phvaso_aug_glmmdl=map2_dbl(phvaso_obj_glmmdl,test,augmentEnet),
+    phvaso_coef_glmmdl=map(phvaso_obj_glmmdl,coef),
+    phvasofsca_aug_glmmdl=map2_dbl(phvasofsca_obj_glmmdl,test,augmentEnet),
+    phvasofsca_coef_glmmdl=map(phvasofsca_obj_glmmdl,coef)
   )
 
 parallel::stopCluster(cl)
 
-
-saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,train,test),paste0(pathout,'asomdls_splitsamples_',ires,'.rds'))
-saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,contains('obj')),paste0(pathout,'asomdls_mdlobjs_',ires,'.rds'))
-saveRDS(allasomdls %>% dplyr::select(-train,-test,-contains('obj')),paste0(pathout,'asomdls_errorstats_',ires,'.rds'))
-
-# saveRDS(allasomdls %>% dplyr::select(dte,asodte,.id,train,test),paste0('output/allasomdls-splitsamples_phv-bootstrap_aso_',ires,'.rds'))
-# saveRDS(allasomdls %>% dplyr::select(-train,-test),paste0('output/allasomdls_phv-bootstrap_aso_',ires,'.rds'))
-# saveRDS(allasomdls %>% dplyr::select(-train,-test),paste0('output/allasomdls_phv-bootstrap_aso_',ires,'.rds'))
+saveRDS(allphvmdls %>% select(-contains('obj')), paste0(pathout,'asomdls_augment_',ires,'.rds'))
 
 
 # }    # <------ uncomment to run sensitivity
