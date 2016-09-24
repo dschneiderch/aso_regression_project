@@ -128,9 +128,10 @@ allasomdls <-
     phvaso_coef_glmmdl=map(phvaso_obj_glmmdl,coef),
     phvasofsca_aug_glmmdl=map(phvasofsca_obj_glmmdl,augmentEnet,alldata),
     phvasofsca_coef_glmmdl=map(phvasofsca_obj_glmmdl,coef)
-  )
+  ) %>%
+  dplyr::select(-contains('obj'),-data)
 
 parallel::stopCluster(cl)
 
-saveRDS(allasomdls %>% select(-contains('coef'),-contains('obj')), paste0(pathout,'asomdls_augment_',ires,'.rds'))
-saveRDS(allasomdls %>% select(-contains('aug'),-contains('obj')), paste0(pathout,'asomdls_coef_',ires,'.rds'))
+saveRDS(allasomdls %>% select(contains('aug')), paste0(pathout,'asomdls_augment_',ires,'.rds'))
+saveRDS(allasomdls %>% select(contains('coef')), paste0(pathout,'asomdls_coef_',ires,'.rds'))
