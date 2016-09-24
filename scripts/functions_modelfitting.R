@@ -165,14 +165,15 @@ augmentEnet=function(model,data){
   realdata=as.data.frame(data)
   x=realdata[['x']]
   y=realdata[['y']]
-  simdte=realdata[['dte']]
+  #simdte=realdata[['dte']]
 
   yvar=all.vars(formula(model)[[2]])
   yobs=realdata[[yvar]]
 
   yhat=as.numeric(predict(model,newdata=data))
   # resid=yhat-yobs
-  data_frame(simdte,x,y,yobs,yhat) %>% setNames(c('simdte','x','y',yvar,paste0(yvar,'hat')))
+  data_frame(x,y,yobs,yhat) %>% setNames(c('x','y',yvar,paste0(yvar,'hat')))
+  #data_frame(simdte,x,y,yobs,yhat) %>% setNames(c('simdte','x','y',yvar,paste0(yvar,'hat')))
 }
 
 # regression tree ----
