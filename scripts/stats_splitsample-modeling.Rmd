@@ -1,14 +1,19 @@
+```{r setup}
 library(raster)
 library(rgdal)
 library(tidyverse)
 library(cowplot)
 library(viridis)
 library(broom)
+```
 
+```{r params}
 ires='500m'
 basin='tuo'
 pathin='output/splitsample-modeling/'
+```
 
+```{r load_data}
 alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
 phv=readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds'))
 phvfsca=readRDS(paste0(pathin,'phvfscamdls_aug_',ires,'.rds'))

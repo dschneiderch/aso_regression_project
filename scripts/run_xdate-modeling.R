@@ -100,8 +100,8 @@ allphvmdls <-
 print('phv models finished.')
 
 saveRDS(alldata,paste0('output/alldata_',ires,'.rds'))
-saveRDS(allphvmdls %>% dplyr::select(contains('aug'),-data), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
-saveRDS(allphvmdls %>% dplyr::select(contains('coef'),-data), paste0(pathout,'phvmdls_coef_',ires,'.rds'))
+saveRDS(allphvmdls %>% dplyr::select(mdldte, phv_aug_glmmdl,phvfsca_aug_glmmdl), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
+saveRDS(allphvmdls %>% dplyr::select(mdldte, phv_coef_glmmdl, phvfsca_coef_glmmdl), paste0(pathout,'phvmdls_coef_',ires,'.rds'))
 
 # asoswe=asoswe %>% filter(asodte %in% unique(asodte)[5:9])
 # allphvmdls <- allphvmdls %>% filter(.id=='01'|.id=='02')
@@ -134,5 +134,5 @@ print('phvaso models finished.')
 
 parallel::stopCluster(cl)
 
-saveRDS(allasomdls %>% select(contains('aug')), paste0(pathout,'asomdls_augment_',ires,'.rds'))
-saveRDS(allasomdls %>% select(contains('coef')), paste0(pathout,'asomdls_coef_',ires,'.rds'))
+saveRDS(allasomdls %>% dplyr::select(mdldte, phvaso_aug_glmmdl, phvasofsca_aug_glmmdl), paste0(pathout,'asomdls_augment_',ires,'.rds'))
+saveRDS(allasomdls %>% dplyr::select(mdldte, phvaso_coef_glmmdl, phvasofsca_coef_glmmdl)), paste0(pathout,'asomdls_coef_',ires,'.rds'))
