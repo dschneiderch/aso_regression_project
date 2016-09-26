@@ -27,7 +27,7 @@ asoswe=as.data.frame(aso_stack,xy=T) %>%
   tbl_df %>%
   gather(dte,swe,-x,-y) %>%
   separate(dte,into=c('basin','res','dte')) %>%
-  filter(!is.na(swe)) #don't remove 0s
+  filter(!is.na(swe),swe>=0) #don't remove 0s
 
 # which asodate should be used for each simdate?  Calculate from splitsample
 bd_phvaso=read_tsv(paste0('output/splitsample-modeling/bestasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
