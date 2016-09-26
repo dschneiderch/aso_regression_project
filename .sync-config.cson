@@ -1,0 +1,19 @@
+remote:
+  host: "janus"
+  user: "dosc3612"
+  path: "/home/dosc3612/sc/aso_regression_project"
+behaviour:
+  uploadOnSave: true
+  syncDownOnOpen: false
+  forgetConsole: false
+  autoHideConsole: true
+  alwaysSyncAll: false
+option:
+  deleteFiles: false
+  exclude: [
+    ".sync-config.cson"
+    ".git"
+    "node_modules"
+    "tmp"
+    "vendor"
+  ]

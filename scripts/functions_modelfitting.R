@@ -45,6 +45,18 @@ join_asodata=function(dF,asoswe2){
   dfout
 }
 
+add_asodata=function(mdldte,data,bestasodates,asoswe2){
+
+if(!any(grepl('dte',colnames(data)))) data$dte=mdldte #
+
+newdata=inner_join(data,bestasodates,by=c('dte'))
+newdata=newdata %>%
+	inner_join(asoswe2,by=c('x','y','basin','res','bestasodte'='asodte')) %>%
+	rename(asodte=bestasodte)
+
+return(newdata)
+}
+
 # error functions ----
 
 myr2=function(model,data){
@@ -59,7 +71,27 @@ mypctmae=function(model,data) {
 }
 
 
+rootmse = function(yobs,yhat){
+sqrt(mean((yobs-yhat)^2,na.rm=T))
+}
+
+
 # Elastic-Net Regularized Generalized Linear Models ----
+
+augmentEnet=function(model,data,asodte=NULL,asoswe2=NULL){
+
+  realdata=as.data.frame(data)
+  if(!is.null(asodte)) realdata=join_asodata(realdata,asoswe2 %>% filter_(~asodte==asodte))
+  x=realdata[['x']]
+  y=realdata[['y']]
+
+  yvar=all.vars(formula(model)[[2]])
+  yobs=realdata[[yvar]]
+
+  yhat=as.numeric(predict(model,newdata=realdata))
+  data_frame(x,y,yobs,yhat) %>% setNames(c('x','y',yvar,paste0(yvar,'hat')))
+}
+
 
 pickAlpha=function(dF,myformula,cl=cl){
   cvalpha=cvAlpha.glmnet(myformula,data=dF,type.measure='mse',outerParallel=cl)
@@ -85,7 +117,9 @@ pickAlpha=function(dF,myformula,cl=cl){
   med_mse <-
     cvresults %>%
     group_by(alpha) %>%
-    summarise(medmse=median(mseval,na.rm=T))
+    summarise(
+      medmse=median(mseval,na.rm=T)
+      )
 
   med_se <- med_mse %>%
     summarise(
@@ -113,13 +147,16 @@ gnet_phvfsca=function(dF,cl=cl){
   return(cvfit)
 }
 
-gnet_phvaso=function(dF,join_asodata,asoswe2,cl=cl,bestasodte=NULL){
+
+gnet_phvaso=function(dF,join_asodata=NULL,asoswe2=NULL,cl=NULL,bestasodte=NULL){
+if(!is.null(bestasodte)) asoswe2=filter(asoswe2,asodte %in% bestasodte)
+if(!is.null(asoswe2)) dF=join_asodata(dF,asoswe2)
+if(is.null(cl)) yesParallel=FALSE else yesParallel=TRUE
+
   myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+asoswe)
-  wrap_cvnet=function(dF,bestalpha,myformula) cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = TRUE)
+  wrap_cvnet=function(dF,bestalpha,myformula) cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = yesParallel)
 
-  if(!is.null(bestasodte)) asoswe2=filter(asoswe2,asodte %in% bestasodte)
-
-  join_asodata(dF,asoswe2) %>%
+ dFout=dF %>%
     group_by(asodte) %>%
     nest %>%
     mutate(
@@ -128,22 +165,27 @@ gnet_phvaso=function(dF,join_asodata,asoswe2,cl=cl,bestasodte=NULL){
     ) %>%
     dplyr::select(asodte,phvaso_obj_glmmdl)
 
+return(dFout)
 }
 
-gnet_phvasofsca=function(dF,join_asodata,asoswe2,cl=cl,bestasodte=NULL){
-  myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+asoswe+fsca)
+gnet_phvasofsca=function(dF,join_asodata=NULL,asoswe2=NULL,cl=NULL,bestasodte=NULL){
+  if(!is.null(bestasodte)) asoswe2=filter(asoswe2,asodte %in% bestasodte)
+  if(!is.null(asoswe2)) dF=join_asodata(dF,asoswe2)
+  if(is.null(cl)) yesParallel=FALSE else yesParallel=TRUE
+
+myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+asoswe+fsca)
   wrap_cvnet=function(dF,bestalpha,myformula) cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = TRUE)
 
-  if(!is.null(bestasodte)) asoswe2=filter(asoswe2,asodte %in% bestasodte)
+dFout=dF %>%
+   group_by(asodte) %>%
+   nest %>%
+   mutate(
+     bestalpha=map_dbl(data,pickAlpha,myformula,cl),
+     phvasofsca_obj_glmmdl=map2(data,bestalpha,wrap_cvnet,myformula)
+   ) %>%
+   dplyr::select(asodte,phvasofsca_obj_glmmdl)
 
-  join_asodata(dF,asoswe2) %>%
-    group_by(asodte) %>%
-    nest %>%
-    mutate(
-      bestalpha=map_dbl(data,pickAlpha,myformula,cl),
-      phvasofsca_obj_glmmdl=map2(data,bestalpha,wrap_cvnet,myformula)
-    ) %>%
-    dplyr::select(asodte,phvasofsca_obj_glmmdl)
+return(dFout)
 }
 
 gnet_phvsp=function(dF,cl=cl){
@@ -161,20 +203,7 @@ gnet_phvfscasp=function(dF,cl=cl){
   return(cvfit)
 }
 
-augmentEnet=function(model,data){
-  realdata=as.data.frame(data)
-  x=realdata[['x']]
-  y=realdata[['y']]
-  #simdte=realdata[['dte']]
 
-  yvar=all.vars(formula(model)[[2]])
-  yobs=realdata[[yvar]]
-
-  yhat=as.numeric(predict(model,newdata=data))
-  # resid=yhat-yobs
-  data_frame(x,y,yobs,yhat) %>% setNames(c('x','y',yvar,paste0(yvar,'hat')))
-  #data_frame(simdte,x,y,yobs,yhat) %>% setNames(c('simdte','x','y',yvar,paste0(yvar,'hat')))
-}
 
 # regression tree ----
 pruneRpart=function(rp){

@@ -12,9 +12,9 @@ library(rpart)
 source('scripts/functions_modelfitting.R')
 
 geoarea2='tuo'
-ires='100m'
+ires='500m'
 fscasource='aso'#needs to be aso if ires < 500m
-pathout='output/xdate-modeling'
+pathout='output/xdate-modeling/'
 dir.create(pathout,recursive=TRUE)
 
 
@@ -27,10 +27,12 @@ asoswe=as.data.frame(aso_stack,xy=T) %>%
   tbl_df %>%
   gather(dte,swe,-x,-y) %>%
   separate(dte,into=c('basin','res','dte')) %>%
-  filter(!is.na(swe))
+  filter(!is.na(swe)) #don't remove 0s
 
 # which asodate should be used for each simdate?  Calculate from splitsample
-# bestasodte=read_csv('output/splitsample-modeling/bestasodate.tsv')
+bd_phvaso=read_tsv(paste0('output/splitsample-modeling/bestasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
+bd_phvasofsca=read_tsv(paste0('output/splitsample-modeling/bestasodates_phvasofsca_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
+
 
 ## phv variables ----
 elev_rast=raster(paste0('data/elevation/',geoarea2,'_dem',ires,'.tif'))
@@ -78,7 +80,7 @@ if(fscasource=='modscag'){
 }
 
 
-cl <- parallel::makePSOCKcluster(4)
+cl <- parallel::makePSOCKcluster(10)
 allphvmdls <-
   alldata %>%
   rename(mdldte=dte) %>%
@@ -105,31 +107,30 @@ saveRDS(allphvmdls %>% dplyr::select(contains('coef'),-data), paste0(pathout,'ph
 # allphvmdls <- allphvmdls %>% filter(.id=='01'|.id=='02')
 
 ## need to join aso swe data for asoswe models. doing phv separately before so it isn't fitting models on sets of the same data
-allmdldata <- allphvmdls %>% select(mdldte,data)
-rm(allphvmdls)
+allmdldata <- allphvmdls %>% select(mdldte,data) #%>% filter(mdldte==unique(mdldte)[3:4])
+#rm(allphvmdls)
+
+
+#t2=tt %>% mutate(mdl=map(phvaso_obj_glmmdl,function(x) x[[2]][[1]]))
+#tt %>% mutate(mdl=map(map(phvaso_obj_glmmdl,function(x) {x[[2]][[1]]}),augmentEnet,add_asodata(NULL,alldata,bd_phvaso,asoswe)))
+
 
 allasomdls <-
-  allmdldata %>%
-  group_by(mdldte) %>%
-  mutate(
-    phvaso_obj_glmmdl=map(data,gnet_phvaso,join_asodata,asoswe,cl,pickASOdte),
-    phvasofsca_obj_glmmdl=map(data,gnet_phvasofsca,join_asodata,asoswe,cl,pickASOdte)
-  ) %>%
-  unnest(phvaso_obj_glmmdl,phvasofsca_obj_glmmdl,.drop=FALSE)
-
-if(!identical(allasomdls[[5]],allasomdls[[7]])) stop()
+allmdldata %>%
+group_by(mdldte) %>%
+mutate(
+data_aso=map2(mdldte,data,add_asodata,bd_phvaso,asoswe),
+phvaso_obj_glmmdl=map(data_aso,gnet_phvaso,NULL,NULL,NULL),
+phvaso_aug_glmmdl=map(map(phvaso_obj_glmmdl,function(x) {x[[2]][[1]]}),augmentEnet,add_asodata(NULL,alldata,bd_phvaso,asoswe)),
+phvaso_coef_glmmdl=map(map(phvaso_obj_glmmdl,function(x) {x[[2]][[1]]}),coef),
+#
+data_aso=map2(mdldte,data,add_asodata,bd_phvasofsca,asoswe),
+phvasofsca_obj_glmmdl=map(data_aso,gnet_phvasofsca,NULL,NULL,NULL),
+phvasofsca_aug_glmmdl=map(map(phvasofsca_obj_glmmdl,function(x) {x[[2]][[1]]}),augmentEnet,add_asodata(NULL,alldata,bd_phvasofsca,asoswe)),
+phvasofsca_coef_glmmdl=map(map(phvasofsca_obj_glmmdl,function(x) {x[[2]][[1]]}),coef)) %>%
+dplyr::select(-contains('obj'))
 
 print('phvaso models finished.')
-
-allasomdls <-
-  allasomdls[!duplicated(as.list(allasomdls))] %>%
-  mutate(
-    phvaso_aug_glmmdl=map(phvaso_obj_glmmdl,augmentEnet,alldata),
-    phvaso_coef_glmmdl=map(phvaso_obj_glmmdl,coef),
-    phvasofsca_aug_glmmdl=map(phvasofsca_obj_glmmdl,augmentEnet,alldata),
-    phvasofsca_coef_glmmdl=map(phvasofsca_obj_glmmdl,coef)
-  ) %>%
-  dplyr::select(-contains('obj'),-data)
 
 parallel::stopCluster(cl)
 
