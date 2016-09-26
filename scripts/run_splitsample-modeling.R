@@ -26,7 +26,7 @@ asoswe=as.data.frame(aso_stack,xy=T) %>%
 tbl_df %>%
 gather(dte,swe,-x,-y) %>%
 separate(dte,into=c('basin','res','dte')) %>%
-filter(!is.na(swe))
+filter(!is.na(swe),swe>=0)#need to remvoe some random -9999
 
 
 ## phv variables ----
@@ -81,7 +81,7 @@ rename(asoswe=swe,
     alldata %>%
     group_by(dte) %>%
     nest() %>%
-    mutate(straps=map(data,crossv_mc,2)) %>%
+    mutate(straps=map(data,crossv_mc,20)) %>%
     unnest(straps) %>%
     mutate(
       phv_obj_glmmdl=map(train,gnet_phv,cl=cl),

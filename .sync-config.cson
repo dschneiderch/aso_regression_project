@@ -1,7 +1,7 @@
 remote:
   host: "janus"
   user: "dosc3612"
-  path: "/home/dosc3612/sc/aso_regression_project"
+  path: "/home/dosc3612/pr/aso_regression_project"
 behaviour:
   uploadOnSave: true
   syncDownOnOpen: false

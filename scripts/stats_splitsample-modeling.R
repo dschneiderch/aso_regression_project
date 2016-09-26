@@ -7,12 +7,21 @@ library(broom)
 
 ires='500m'
 basin='tuo'
-pathin='output/phv-bootstrap_aso/'
+pathin='output/splitsample-modeling/'
 
 alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
-phvmdls=readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds'))
-asomdls=readRDS(paste0(pathin,'asomdls_augment_',ires,'.rds'))
-
+phv=readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds'))
+phvfsca=readRDS(paste0(pathin,'phvfscamdls_aug_',ires,'.rds'))
+fns=dir(pathin,glob2rx(paste0('^phvasomdls_aug*',ires,'*.rds')),full.names=T)
+phvaso =
+  bind_rows(
+    do.call(readRDS,as.list(fns))
+    )
+fns=dir(pathin,glob2rx(paste0('^phvasofscamdls_aug*',ires,'*.rds')),full.names=T)
+phvasofsca =
+  bind_rows(
+    lapply(fns,readRDS)#do.call(readRDS,as.list(fns))
+    )
 allaug=phvmdls
 
 extractAug <- function(allaug,mdlpreds,mdldtype){
@@ -25,10 +34,10 @@ extractAug <- function(allaug,mdlpreds,mdldtype){
 
 }
 
-mdlpreds='phv'
+mdlpreds='phvasofsca'
 mdltype='glmmdl'
 phv=extractAug(allaug,'phv','glmmdl')
-phvfsca=extractAug(allaug,'phvfsca','glmmdl')
+phvasofsca=extractAug(allaug,'phvasofsca','glmmdl')
 
 r2=function(dF){
   cor(dF$swe,dF$swehat)^2
