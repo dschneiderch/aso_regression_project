@@ -135,4 +135,4 @@ print('phvaso models finished.')
 parallel::stopCluster(cl)
 
 saveRDS(allasomdls %>% dplyr::select(mdldte, phvaso_aug_glmmdl, phvasofsca_aug_glmmdl), paste0(pathout,'asomdls_augment_',ires,'.rds'))
-saveRDS(allasomdls %>% dplyr::select(mdldte, phvaso_coef_glmmdl, phvasofsca_coef_glmmdl)), paste0(pathout,'asomdls_coef_',ires,'.rds'))
+saveRDS(allasomdls %>% dplyr::select(mdldte, phvaso_coef_glmmdl, phvasofsca_coef_glmmdl), paste0(pathout,'asomdls_coef_',ires,'.rds'))
