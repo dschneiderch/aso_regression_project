@@ -1,0 +1,43 @@
+---
+title: "ASO xdate error metrics"
+author: "Dominik Schneider"
+output:
+  html_document:
+    fig_height: 12
+    fig_width: 30
+    self_contained: true
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(raster)
+library(rgdal)
+library(tidyverse)
+library(cowplot)
+library(viridis)
+library(broom)
+library(viridis)
+library(cowplot)
+library(RColorBrewer)
+library(knitr)
+
+#must have rprojroot installed from devtools::install_github("krlmlr/rprojroot")
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache=FALSE,echo=FALSE,message = FALSE,warning=FALSE,error=FALSE,hide=TRUE,results='hide')#,fig.height=12,fig.width=12)
+```
+
+
+```{r params}
+ires='500m'
+basin='tuo'
+pathin='output/xdate-modeling/'
+```
+
+```{r data}
+alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
+
+phvmdls <- readRDS('output/xdate-modeling/phvmdls_augment_500m.rds')
+
+```
+
+# Error distribution of 
