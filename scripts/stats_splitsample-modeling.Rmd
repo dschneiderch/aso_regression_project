@@ -66,8 +66,9 @@ alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
 ```
 
 ```{r augmentdata}
-if(file.exists(paste0('output/splitsample-modeling/stats_combined_',ires,'.rds'))){
-  predictions=readRDS(paste0('output/splitsample-modeling/stats_combined_',ires,'.rds'))
+# file.remove(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds')
+if(file.exists(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))){
+  predictions=readRDS(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))
 } else {
   #do this on crestone or better only
 phv <-
@@ -161,18 +162,18 @@ ggplot(mdlstats2)+
 
 ```
 
-# Best Predictions from each model 
+# Best Predictions from each model
 
 ```{r best_phvaso}
-bestdates <- 
+bestdates <-
   bind_rows(
     bd_phvaso %>% mutate(mdlpreds='phvaso'),
     bd_phvasofsca %>% mutate(mdlpreds='phvasofsca')
   )
 
-bestpreds <- 
-  left_join(mdlstats2,dplyr::select(bestdates,dte,bestasodte,mdlpreds),by=c('mdldte'='dte','asodte'='bestasodte','mdlpreds')) %>% 
-  ungroup %>% 
+bestpreds <-
+  left_join(mdlstats2,dplyr::select(bestdates,dte,bestasodte,mdlpreds),by=c('mdldte'='dte','asodte'='bestasodte','mdlpreds')) %>%
+  ungroup %>%
   mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
 
 ggplot(bestpreds)+
@@ -182,4 +183,3 @@ ggplot(bestpreds)+
   theme(axis.text.x=element_text(angle=45,hjust=1))
 
 ```
-
