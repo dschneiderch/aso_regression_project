@@ -33,85 +33,11 @@ basin='tuo'
 pathin='output/splitsample-modeling/'
 ```
 
-
-```{r functions}
-extractAug <- function(allaug,mdlpreds,mdltype){
-  coln <- paste(mdlpreds,'aug',mdltype,sep='_')
-  allaug %>%
-    group_by(mdldte) %>%
-    unnest_(coln) %>%
-    # gather(var,val,swe:resid) %>%
-    mutate(mdlpreds,mdltype)
-}
-
-r2 <- function(yobs,yhat){
-  cor(yobs,yhat)^2
-}
-pctmae <- function(yobs,yhat){
-  mean(abs(yhat-yobs),na.rm=T)/mean(yobs,na.rm=T)*100
-}
-
-calc_error <- function(dF){
-  dF %>%
-    summarise(
-      r2=r2(swe,swehat),
-      pctmae=pctmae(swe,swehat)
-    )
-}
-```
-
 ```{r data}
 alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
 
+predictions=readRDS(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))
 ```
-
-```{r augmentdata}
-# file.remove(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds')
-if(file.exists(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))){
-  predictions=readRDS(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))
-} else {
-  #do this on crestone or better only
-  phv <-
-    readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
-    rename(mdldte=dte) %>%
-    extractAug(.,'phv','glmmdl') %>%
-    group_by(mdldte,mdlpreds) %>%
-    calc_error()
-  
-  phvfsca <-
-    readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
-    rename(mdldte=dte) %>%
-    extractAug(.,'phvfsca','glmmdl') %>%
-    group_by(mdldte,mdlpreds) %>%
-    calc_error()
-  
-  fns <- dir(pathin,glob2rx(paste0('^phvasomdls_aug*',ires,'*.rds')),full.names=T)
-  phvaso <-
-    bind_rows(
-      lapply(fns,readRDS)
-    ) %>%
-    rename(mdldte=dte) %>%
-    extractAug(.,'phvaso','glmmdl') %>%
-    group_by(mdldte,asodte,mdlpreds) %>%
-    calc_error()
-  
-  fns  <- dir(pathin,glob2rx(paste0('^phvasofscamdls_aug*',ires,'*.rds')),full.names=T)
-  phvasofsca <-
-    bind_rows(
-      lapply(fns,readRDS)
-    ) %>%
-    rename(mdldte=dte) %>%
-    extractAug(.,'phvasofsca','glmmdl')%>%
-    group_by(mdldte,asodte,mdlpreds) %>%
-    calc_error()
-  
-  #combine
-  predictions=bind_rows(phv,phvfsca,phvaso,phvasofsca)
-  saveRDS(predictions,paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))
-  
-}
-```
-
 
 # Error distribution of all aso dates
 
