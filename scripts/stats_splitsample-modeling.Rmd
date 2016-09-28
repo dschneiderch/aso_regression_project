@@ -2,11 +2,11 @@
 title: "ASO splitsampling error metrics"
 author: "Dominik Schneider"
 output:
-  html_document:
-    fig_height: 12
-    fig_width: 30
-    self_contained: true
-    toc: yes
+html_document:
+fig_height: 12
+fig_width: 30
+self_contained: true
+toc: yes
 ---
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
@@ -67,48 +67,48 @@ alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
 
 ```{r augmentdata}
 # file.remove(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds')
-if(file.exists(paste0('output/splitsample-modeling/stats_combined_',ires,'.rds'))){
-  predictions=readRDS(paste0('output/splitsample-modeling/stats_combined_',ires,'.rds'))
+if(file.exists(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))){
+  predictions=readRDS(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))
 } else {
   #do this on crestone or better only
-phv <-
-  readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
-  rename(mdldte=dte) %>%
-  extractAug(.,'phv','glmmdl') %>%
-  group_by(mdldte,mdlpreds) %>%
-  calc_error()
-
-phvfsca <-
-  readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
-  rename(mdldte=dte) %>%
-  extractAug(.,'phvfsca','glmmdl') %>%
-  group_by(mdldte,mdlpreds) %>%
-  calc_error()
-
-fns <- dir(pathin,glob2rx(paste0('^phvasomdls_aug*',ires,'*.rds')),full.names=T)
-phvaso <-
-  bind_rows(
-    lapply(fns,readRDS)
-  ) %>%
-  rename(mdldte=dte) %>%
-  extractAug(.,'phvaso','glmmdl') %>%
-  group_by(mdldte,asodte,mdlpreds) %>%
-  calc_error()
-
-fns  <- dir(pathin,glob2rx(paste0('^phvasofscamdls_aug*',ires,'*.rds')),full.names=T)
-phvasofsca <-
-  bind_rows(
-    lapply(fns,readRDS)
-  ) %>%
-  rename(mdldte=dte) %>%
-  extractAug(.,'phvasofsca','glmmdl')%>%
-  group_by(mdldte,asodte,mdlpreds) %>%
-  calc_error()
-
-#combine
-predictions=bind_rows(phv,phvfsca,phvaso,phvasofsca)
-saveRDS(predictions,paste0('output/splitsample-modeling/stats_combined_',ires,'.rds'))
-
+  phv <-
+    readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
+    rename(mdldte=dte) %>%
+    extractAug(.,'phv','glmmdl') %>%
+    group_by(mdldte,mdlpreds) %>%
+    calc_error()
+  
+  phvfsca <-
+    readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
+    rename(mdldte=dte) %>%
+    extractAug(.,'phvfsca','glmmdl') %>%
+    group_by(mdldte,mdlpreds) %>%
+    calc_error()
+  
+  fns <- dir(pathin,glob2rx(paste0('^phvasomdls_aug*',ires,'*.rds')),full.names=T)
+  phvaso <-
+    bind_rows(
+      lapply(fns,readRDS)
+    ) %>%
+    rename(mdldte=dte) %>%
+    extractAug(.,'phvaso','glmmdl') %>%
+    group_by(mdldte,asodte,mdlpreds) %>%
+    calc_error()
+  
+  fns  <- dir(pathin,glob2rx(paste0('^phvasofscamdls_aug*',ires,'*.rds')),full.names=T)
+  phvasofsca <-
+    bind_rows(
+      lapply(fns,readRDS)
+    ) %>%
+    rename(mdldte=dte) %>%
+    extractAug(.,'phvasofsca','glmmdl')%>%
+    group_by(mdldte,asodte,mdlpreds) %>%
+    calc_error()
+  
+  #combine
+  predictions=bind_rows(phv,phvfsca,phvaso,phvasofsca)
+  saveRDS(predictions,paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))
+  
 }
 ```
 
@@ -140,13 +140,13 @@ mdlstats2 %>%
                caption = 'Median Statistics')
 
 mdlstats2 %>%
-group_by(metricvar,mdlpreds) %>%
-summarise(
-  avg=mean(metricval)) %>%
-spread(metricvar,avg) %>%
+  group_by(metricvar,mdlpreds) %>%
+  summarise(
+    avg=mean(metricval)) %>%
+  spread(metricvar,avg) %>%
   knitr::kable(.,digits=2,scientific=F,
                caption= 'Mean Statistics')
-  # readr::write_tsv(path=paste0('output/avgmdlstats_phv-bootstrap_aso_',ires,'.txt'))
+# readr::write_tsv(path=paste0('output/avgmdlstats_phv-bootstrap_aso_',ires,'.txt'))
 
 
 ggplot(mdlstats2)+
@@ -182,7 +182,7 @@ bestpreds <-
   ungroup %>%
   bind_rows(
     mdlstats2 %>% filter(!grepl('aso',mdlpreds))
-    ) %>%
+  ) %>%
   mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
 
 bestpreds %>%
