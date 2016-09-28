@@ -2,11 +2,11 @@
 title: "ASO splitsampling error metrics"
 author: "Dominik Schneider"
 output:
-html_document:
-fig_height: 12
-fig_width: 30
-self_contained: true
-toc: yes
+  html_document:
+    fig_height: 12
+    fig_width: 30
+    self_contained: true
+    toc: yes
 ---
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}

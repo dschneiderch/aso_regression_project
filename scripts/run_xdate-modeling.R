@@ -14,6 +14,7 @@ source('scripts/functions_modelfitting.R')
 geoarea2='tuo'
 ires='500m'
 fscasource='aso'#needs to be aso if ires < 500m
+pathin='output/splitsample-modeling/'
 pathout='output/xdate-modeling/'
 dir.create(pathout,recursive=TRUE)
 
@@ -26,9 +27,9 @@ asoswedates=unique(asoswe$dte)
 
 
 # which asodate should be used for each simdate?  Calculate from splitsample
-if(!exists(testdates)){
-bd_phvaso=read_tsv(paste0('output/splitsample-modeling/bestasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
-bd_phvasofsca=read_tsv(paste0('output/splitsample-modeling/bestasodates_phvasofsca_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
+if(!exists('testdates')){
+bd_phvaso=read_tsv(paste0(pathin,'bestasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
+bd_phvasofsca=read_tsv(paste0(pathin,'bestasodates_phvasofsca_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
 } else {
   err=read_tsv(paste0('output/splitsample-modeling/errors_allasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',asodte='c',yr='c',rmse='d',pctrmse='d'))
   bd_phvaso <-
@@ -124,7 +125,7 @@ allphvmdls <-
 
 print('phv models finished.')
 
-saveRDS(alldata,paste0('output/alldata_',ires,'.rds'))
+saveRDS(alldata,paste0(pathout,'alldata_',ires,'.rds'))
 saveRDS(allphvmdls %>% dplyr::select(mdldte, phv_aug_glmmdl,phvfsca_aug_glmmdl), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
 saveRDS(allphvmdls %>% dplyr::select(mdldte, phv_coef_glmmdl, phvfsca_coef_glmmdl), paste0(pathout,'phvmdls_coef_',ires,'.rds'))
 
