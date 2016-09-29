@@ -4,14 +4,12 @@ author: "Dominik Schneider"
 output:
   html_document:
     fig_height: 12
-    fig_width: 30
+    fig_width: 18
     self_contained: true
     toc: yes
 ---
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
-library(raster)
-library(rgdal)
 library(tidyverse)
 library(cowplot)
 library(viridis)
@@ -33,11 +31,169 @@ basin='tuo'
 pathin='output/xdate-modeling/'
 ```
 
+```{r functions}
+r2 <- function(yobs,yhat){
+  cor(yobs,yhat,use='complete.obs')^2
+}
+pctmae <- function(yobs,yhat){
+  mean(abs(yhat-yobs),na.rm=T)/mean(yobs,na.rm=T)*100
+}
+generate_stats=function(dF){
+  dF %>% 
+  group_by(mdldte,simdte) %>% 
+  summarise(r2=r2(swe,swehat),
+            pctmae=pctmae(swe,swehat)) %>% 
+  mutate(simyr=substr(simdte,1,4),
+         mdlyr=substr(mdldte,1,4))
+}
+
+best_stats <- function(dF){
+  dF %>% 
+    ungroup %>% 
+    mutate(simyr=substr(simdte,1,4),
+           mdlyr=substr(mdldte,1,4)) %>% 
+    filter(simyr!=mdlyr) %>% 
+    group_by(simdte,simyr) %>% 
+    nest() %>% 
+    mutate(pctmae=map(data,function(dF2){
+      dF2 %>% summarise(mdldte=mdldte[which.min(pctmae)],
+                        mdlyr=substr(mdldte,1,4),
+                        pctmae=min(pctmae))
+    }),
+    r2=map(data,function(dF2){
+      dF2 %>% summarise(mdldte=mdldte[which.max(r2)],
+                        mdlyr=substr(mdldte,1,4),
+                        r2=max(r2))    
+    })
+    )
+}
+```
+
 ```{r data}
+# forgot to save simulation dates but alldata is saved with every run (both for xdate and splitsample) so use that to add date 
 alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
 
-phvmdls <- readRDS('output/xdate-modeling/phvmdls_augment_500m.rds')
+phvmdls <- readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
+  mutate(phv_aug_glmmdl=map(phv_aug_glmmdl, 
+                            function(df,alldata2) {mutate(df,simdte=alldata2$dte)}, 
+                            alldata),
+         phvfsca_aug_glmmdl=map(phvfsca_aug_glmmdl,
+                                function(df,alldata2) {mutate(df,simdte=alldata2$dte)},
+                                alldata))
+
+phvasomdls <- readRDS(paste0(pathin,'asomdls_augment_',ires,'.rds')) %>%
+  mutate(phvaso_aug_glmmdl=map(phvaso_aug_glmmdl, 
+                            function(df,alldata2) {mutate(df,simdte=alldata2$dte)}, 
+                            alldata),
+         phvasofsca_aug_glmmdl=map(phvasofsca_aug_glmmdl,
+                                function(df,alldata2) {mutate(df,simdte=alldata2$dte)},
+                                alldata))
+
+phv <- phvmdls %>% dplyr::select(mdldte,phv_aug_glmmdl) %>% unnest()
+phvfsca <- phvmdls %>% dplyr::select(mdldte,phvfsca_aug_glmmdl) %>% unnest()
+phvaso <- phvasomdls %>% dplyr::select(mdldte,phvaso_aug_glmmdl) %>% unnest()
+phvasofsca <- phvasomdls %>% dplyr::select(mdldte,phvasofsca_aug_glmmdl) %>% unnest()
+```
+
+# r^2^
+
+```{r plot_functions}
+
+statheatmap=function(dF,metricvar){
+  ggplot(dF)+
+    geom_raster(aes_(x = ~mdldte, y = ~simdte, fill = as.name(metricvar)) )+
+    facet_grid(simyr~mdlyr, scales='free', space='free', as.table=FALSE)+
+    # guides(fill=guide_colorbar(reverse = T))+
+    theme(axis.text.x=element_text(angle=45,hjust=1))
+}
+
+
 
 ```
 
-# Error distribution of 
+
+```{r}
+phvstats <- generate_stats(phv)
+bestphv <- best_stats(phvstats) %>% mutate(mdlpreds='phv')
+phvfscastats <- generate_stats(phvfsca)
+bestphvfsca <- best_stats(phvfscastats) %>% mutate(mdlpreds='phvfsca')
+phvasostats <- generate_stats(phvaso)
+bestphvaso <- best_stats(phvasostats) %>% mutate(mdlpreds='phvaso')
+phvasofscastats <- generate_stats(phvasofsca)
+bestphvasofsca <- best_stats(phvasofscastats) %>% mutate(mdlpreds='phvasofsca')
+#
+allbeststats <- bind_rows(bestphv,bestphvfsca,bestphvaso,bestphvasofsca)
+  
+```
+
+## phv
+
+```{r}
+statheatmap(phvstats,'r2')+
+  scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
+  geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
+```
+
+## phvfsca
+
+```{r}
+statheatmap(phvfscastats,'r2')+
+  scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
+  geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
+
+```
+
+## phvaso
+
+```{r}
+statheatmap(phvasostats,'r2')+
+  scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
+  geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
+
+```
+
+## phvasofsca
+
+```{r}
+statheatmap(phvasofscastats,'r2')+
+  scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
+  geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
+
+```
+
+# % MAE
+
+## phv
+
+```{r}
+statheatmap(phvstats,'pctmae')+
+  scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
+  geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
+
+```
+
+## phvfsca
+```{r}
+statheatmap(phvfscastats,'pctmae')+
+  scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
+  geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
+
+```
+
+## phvaso
+
+```{r}
+statheatmap(phvasostats,'pctmae')+
+  scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
+  geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
+
+```
+
+## phvasofsca
+
+```{r}
+statheatmap(phvasofscastats,'pctmae')+
+  scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
+  geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
+```
+
