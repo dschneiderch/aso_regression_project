@@ -4,7 +4,7 @@ author: "Dominik Schneider"
 output:
   html_document:
     fig_height: 12
-    fig_width: 18
+    fig_width: 12
     self_contained: true
     toc: yes
 ---
@@ -35,8 +35,14 @@ pathin='output/xdate-modeling/'
 r2 <- function(yobs,yhat){
   cor(yobs,yhat,use='complete.obs')^2
 }
+mae <- function(yobs,yhat){
+  mean(abs(yhat-yobs),na.rm=T)
+}
 pctmae <- function(yobs,yhat){
-  mean(abs(yhat-yobs),na.rm=T)/mean(yobs,na.rm=T)*100
+  mae(yobs,yhat)/mean(yobs,na.rm=T)*100
+}
+mse <- function(yobs,yhat){
+  mean((yhat-yobs)^2,na.rm=T)
 }
 generate_stats=function(dF){
   dF %>% 
@@ -97,7 +103,7 @@ phvasofsca <- phvasomdls %>% dplyr::select(mdldte,phvasofsca_aug_glmmdl) %>% unn
 
 # r^2^
 
-```{r plot_functions}
+```{r heatmap_plotfunction}
 
 statheatmap=function(dF,metricvar){
   ggplot(dF)+
@@ -195,5 +201,212 @@ statheatmap(phvasostats,'pctmae')+
 statheatmap(phvasofscastats,'pctmae')+
   scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
   geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
+```
+
+# compare best errors vs basin aggregated snow variables
+
+```{r err_snow_plots}
+basinstats <- 
+  alldata %>%
+  dplyr::select(dte,swe,fsca) %>% 
+  group_by(dte) %>% 
+  summarise(
+    avg_swe=mean(swe),
+    mv_swe=sd(swe)*mean(swe),
+    med_fsca=median(fsca),
+    mv_fsca=sd(fsca)*median(fsca)
+  )
+
+compare_mdlsim <- function(mdlpreds1,errorvar,errordF){
+  dF1 <- 
+    left_join(select_(errordF,~matches('sim'),as.name(errorvar)),
+              basinstats,by=c('simdte'='dte')) %>% 
+    rename(dte=simdte,
+           yr=simyr) %>% 
+    mutate(mdlpreds=mdlpreds1,
+           type='sim')
+  
+  dF2 <- left_join(select_(errordF,~matches('mdl'),as.name(errorvar)),
+                   basinstats,by=c('mdldte'='dte')) %>% 
+    rename(dte=mdldte,
+           yr=mdlyr) %>% 
+    mutate(type='mdl')
+  
+  alldF <- 
+    bind_rows(dF1,dF2) %>% 
+    group_by_(as.name(errorvar)) %>% 
+    mutate(avgswediff=abs(diff(avg_swe)/avg_swe[2])*100,
+           mvswediff=abs(diff(mv_swe)/mv_swe[2])*100,
+           medfscadiff=abs(diff(med_fsca)/med_fsca[2])*100,
+           mvfscadiff=abs(diff(mv_fsca)/mv_fsca[2]*100)) %>%
+    gather(snowvar,snowval,avgswediff:mvfscadiff) %>% 
+    mutate(snowvar=factor(snowvar,levels=c('avgswediff','mvswediff','medfscadiff','mvfscadiff')))
+  
+  return(alldF)
+}
+
+plot_error_snow <- function(alldF,errorvar){
+  if(errorvar=='r2') {
+    errlab='r^2' 
+    leg=theme(legend.justification=c(1,0),
+              legend.position=c(1,0))
+  } else {
+    errlab='"%"*MAE'
+    leg=theme(legend.justification=c(1,1),
+              legend.position=c(1,1))
+  }
+  errlab=parse(text = paste0(errlab,'~of~prediction'))
+  
+  ggplot(alldF,aes_(x=~snowval,y=as.name(errorvar),colour=~snowvar))+
+    geom_point()+
+    geom_smooth(method='lm',se=F)+
+    labs(x='|sim-mdl|/mdl*100 [%]',y=errlab,title=unique(alldF$mdlpreds))+
+    scale_color_brewer(palette='Paired')+
+    leg
+}
+
+
+l=list(bestphv,bestphvfsca,bestphvaso,bestphvasofsca)
+ev=c('r2','pctmae')
+mylist=lapply(l,FUN=function(x){
+  lapply(ev,FUN=function(v1) list(x,v1))
+}) %>% unlist(recursive=F)#or purrr::flatten
+
+myplots <- 
+  lapply(X=mylist,FUN=function(lst){
+  # print(head(lst))
+    mdldF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+  g=compare_mdlsim(unique(mdldF$mdlpreds),errorvar,unnest_(mdldF,as.name(errorvar),.drop=TRUE)) %>%
+  plot_error_snow(.,errorvar)
+  return(g)
+})
+plot_grid(plotlist=myplots,ncol=2)
+
+```
+
+# compare best errors vs fsca pattern
+
+```{r fsca_errs}
+mdldata <- simdata <- 
+  alldata %>%
+  dplyr::select(dte,x,y,fsca)
+
+mdldata <- mdldata %>% rename(mdldte=dte,
+                              mdlfsca=fsca)
+simdata <- simdata %>% rename(simdte=dte,
+                              simfsca=fsca)
+fscadata <- full_join(mdldata,simdata,by=c('x','y'))
+
+fscastats <- 
+  fscadata %>% 
+  group_by(mdldte,simdte) %>% 
+  summarise(mae=mae(simfsca,mdlfsca),
+            mse=mse(simfsca,mdlfsca)
+  ) %>% 
+  mutate(simyr=substr(simdte,1,4),
+         mdlyr=substr(mdldte,1,4))
+
+bestfsca_mae <- 
+  fscastats %>% 
+  filter(mdlyr!=simyr) %>% 
+  group_by(simdte,simyr) %>% 
+  summarise(mdldte=mdldte[which.min(mae)],
+            mdlyr=substr(mdldte,1,4),
+            mae=min(mae))
+bestfsca_mse <- 
+  fscastats %>% 
+  filter(mdlyr!=simyr) %>% 
+  group_by(simdte,simyr) %>% 
+  summarise(mdldte=mdldte[which.min(mse)],
+            mdlyr=substr(mdldte,1,4),
+            mae=min(mse))
+
+
+fscastats %>% 
+  select(-mse) %>% 
+ggplot()+
+  geom_raster(aes(x=mdldte,y=simdte,fill=mae))+
+  geom_point(data=bestfsca_mae,aes(x=mdldte,y=simdte),shape=4)+
+  facet_grid(simyr~mdlyr,scales='free',space='free',as.table=FALSE)+
+  scale_fill_viridis(option = 'D',direction = -1)+
+  theme(axis.text.x=element_text(angle=45,hjust=1))+
+  labs(title='MAE')
+
+fscastats %>% 
+  select(-mae) %>% 
+ggplot()+
+  geom_raster(aes(x=mdldte,y=simdte,fill=mse))+
+  geom_point(data=bestfsca_mse,aes(x=mdldte,y=simdte),shape=4)+
+  facet_grid(simyr~mdlyr,scales='free',space='free',as.table=FALSE)+
+  scale_fill_viridis(option = 'D',direction = -1)+
+  coord_fixed()+
+  theme(axis.text.x=element_text(angle=45,hjust=1))+
+  labs(title='MSE')
+
+```
+
+```{r err_fsca_plots}
+
+plot_error_fsca <- function(alldF,errorvar){
+  if(errorvar=='r2') {
+    errlab='r^2' 
+    leg=theme(legend.justification=c(1,0),
+              legend.position=c(1,0))
+  } else {
+    errlab='"%"*MAE'
+    leg=theme(legend.justification=c(1,0),
+              legend.position=c(1,0))
+  }
+  errlab=parse(text = paste0(errlab,'~of~prediction'))
+  
+  ggplot(alldF,aes_(x=~fscametricval,y=as.name(errorvar),colour=~fscametricvar))+
+    geom_point()+
+    geom_smooth(method='lm',se=F)+
+    labs(x='pixel-wise pattern difference',y=errlab,title=unique(alldF$mdlpreds))+
+    scale_color_brewer(palette='Paired')+
+    leg
+}
+
+#use mylist from other error plots above
+myplots <- 
+  lapply(X=mylist,FUN=function(lst){
+    # print(head(lst))
+    mdldF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+    g <- 
+      unnest_(mdldF,as.name(errorvar),.drop=T) %>% 
+      full_join(fscastats) %>% 
+      gather(fscametricvar,fscametricval,mae,mse) %>%
+      plot_error_fsca(.,errorvar)
+    return(g)
+  })
+plot_grid(plotlist=myplots,ncol=2)
+
+```
+
+```{r}
+# mdldF=bestphvfsca
+# errorvar='pctmae'
+# expand
+# allmdlpreds <- 
+#   bind_rows(
+#     lapply(X=mylist,function(lst){
+#       mdldF=lst[[1]]
+#       errorvar=lst[[2]]
+#       dF=unnest_(mdldF,as.name(errorvar),.drop=T)
+#       glance(lm)
+#     })
+#   )
+#           
+#           %>% 
+#       full_join(fscastats) %>% 
+#       gather(fscametricvar,fscametricval,mae,mse) %>% 
+#   group_by()
+# 
+# 
+
 ```
 

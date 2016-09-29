@@ -7,3 +7,7 @@ data/
 figs/
 output/
 .DS_Store
+
+*.dcf
+
+.DS_Store
