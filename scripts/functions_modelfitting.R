@@ -72,9 +72,9 @@ join_asodata=function(dF,asoswe2){
 
 add_asodata=function(data1,bestasodates,asoswe2){
 
-  newdata=inner_join(data1,bestasodates,by=c('dte'))
-  newdata=newdata %>%
-    inner_join(asoswe2,by=c('x','y','basin','res','bestasodte'='asodte')) %>%
+  newdata=left_join(data1,bestasodates,by=c('dte'))
+  newdata=newdata %>% #use left join so we don't lose data. need rows to stay the same as in alldata
+    left_join(asoswe2,by=c('x','y','basin','res','bestasodte'='asodte')) %>%
     rename(asodte=bestasodte) %>%
     dplyr::select(-dte)
 

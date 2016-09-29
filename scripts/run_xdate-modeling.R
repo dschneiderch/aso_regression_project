@@ -107,6 +107,7 @@ num_cores <- parallel::detectCores() - 1
 #if not fork then need to export libraries and variables to nodes. unix only
 cl <- parallel::makeCluster(num_cores,type='FORK')
 
+
 allphvmdls <-
   alldata %>%
   mutate(mdldte=dte) %>%#need this below with phvaso(fsca)
@@ -122,6 +123,7 @@ allphvmdls <-
     phvfsca_coef_glmmdl=map(phvfsca_obj_glmmdl,coef)
   ) %>%
   dplyr::select(-contains('obj'))
+
 
 print('phv models finished.')
 
