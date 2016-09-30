@@ -10,7 +10,7 @@ source('scripts/functions_modelfitting.R')
 geoarea2='tuo'
 ires='500m'
 fscasource='aso'#needs to be aso if ires < 500m
-pathin='output/splitsample-modeling/20iterations/'
+pathin='output/splitsample-modeling/'
 pathout='output/splitsample-modeling/'
 dir.create(pathout,recursive=TRUE)
 
