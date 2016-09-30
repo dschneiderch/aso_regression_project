@@ -28,8 +28,8 @@ asoswedates=unique(asoswe$dte)
 
 # which asodate should be used for each simdate?  Calculate from splitsample
 if(!exists('testdates')){
-bd_phvaso=read_tsv(paste0(pathin,'bestasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
-bd_phvasofsca=read_tsv(paste0(pathin,'bestasodates_phvasofsca_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
+  bd_phvaso=read_tsv(paste0(pathin,'bestasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
+  bd_phvasofsca=read_tsv(paste0(pathin,'bestasodates_phvasofsca_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
 } else {
   err=read_tsv(paste0('output/splitsample-modeling/errors_allasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',asodte='c',yr='c',rmse='d',pctrmse='d'))
   bd_phvaso <-
