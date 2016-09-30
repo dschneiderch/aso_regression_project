@@ -18,6 +18,7 @@ library(viridis)
 library(cowplot)
 library(RColorBrewer)
 library(knitr)
+library(stargazer)
 
 #must have rprojroot installed from devtools::install_github("krlmlr/rprojroot")
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
@@ -205,7 +206,7 @@ statheatmap(phvasofscastats,'pctmae')+
 
 # compare best errors vs basin aggregated snow variables
 
-```{r err_snow_plots}
+```{r err_snow_plots, results='asis'}
 basinstats <- 
   alldata %>%
   dplyr::select(dte,swe,fsca) %>% 
@@ -256,12 +257,14 @@ plot_error_snow <- function(alldF,errorvar){
               legend.position=c(1,1))
   }
   errlab=parse(text = paste0(errlab,'~of~prediction'))
-  
+  limx=coord_cartesian(xlim=c(0,500))
+
   ggplot(alldF,aes_(x=~snowval,y=as.name(errorvar),colour=~snowvar))+
     geom_point()+
     geom_smooth(method='lm',se=F)+
     labs(x='|sim-mdl|/mdl*100 [%]',y=errlab,title=unique(alldF$mdlpreds))+
     scale_color_brewer(palette='Paired')+
+    limx+
     leg
 }
 
@@ -272,17 +275,71 @@ mylist=lapply(l,FUN=function(x){
   lapply(ev,FUN=function(v1) list(x,v1))
 }) %>% unlist(recursive=F)#or purrr::flatten
 
-myplots <- 
+data2plot <- 
   lapply(X=mylist,FUN=function(lst){
   # print(head(lst))
     mdldF=lst[[1]]
     errorvar=lst[[2]]
     # print(errorvar)
-  g=compare_mdlsim(unique(mdldF$mdlpreds),errorvar,unnest_(mdldF,as.name(errorvar),.drop=TRUE)) %>%
-  plot_error_snow(.,errorvar)
-  return(g)
+  alldF <- 
+    compare_mdlsim(unique(mdldF$mdlpreds),errorvar,unnest_(mdldF,as.name(errorvar),.drop=TRUE))
+  return(list(alldF,errorvar))
+  }) 
+  
+myplots <- 
+  lapply(data2plot,FUN=function(lst) {
+    # print(lst)
+    dF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+  plot_error_snow(dF,errorvar)
 })
-plot_grid(plotlist=myplots,ncol=2)
+plot_grid(plotlist=myplots,
+          ncol=2,
+          labels=paste0('(',seq(1,8,1),')'))
+
+
+
+mdlpreds='phvfsca'
+mdldF=bestphvfsca
+errorvar='pctmae'
+lst=data2plot[[1]]
+rm(mdlpreds,mdldF,errorvar,lst)
+
+bestfitlines=lapply(X=data2plot,FUN=function(lst){
+    # print(head(lst))
+    mdldF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+    myformula=as.formula(paste(errorvar,'~ basinmetricval'))
+    lmdF <- 
+      unnest_(mdldF,as.name(errorvar),.drop=T) %>% 
+      left_join(basinstats) %>% 
+      gather(basinmetricvar,basinmetricval,avg_swe:mv_fsca) %>%
+      group_by(basinmetricvar,mdlpreds) %>%
+      nest() %>% 
+      mutate(lmobj=map(data,function(x) lm(myformula,data=x))) 
+    return(lmdF$lmobj)
+  })
+
+# mdllabs <- 
+#   paste(
+#   paste(rep(c('phv','phvfsca','phvaso','phvasofsca'),each=4),rep(c('r2','pctmae'),each=2),sep='.'),
+#   rep(c('mae','mse'),length.out=16),sep='.')
+mdllabs <- paste(rep(c('phv','phvfsca','phvaso','phvasofsca'),each=2),rep(c('r2','pctmae'),each=1),sep='.')
+stargazer(bestfitlines,
+          type='html',
+          ci=FALSE,
+          flip=TRUE,
+          # covariate.labels=rep(c('fscadiff',),length.out=16),
+          dep.var.labels = mdllabs,
+          column.labels=paste0(rep(seq(1,8),each=4),c('as','mvs','mf','mvf')),
+          keep.stat=c('rsq'),
+          digits=2,
+          report=c('vc*'),
+          no.space=F,
+          out='output/table_predictionerrors-basinsnow.html')
+
 
 ```
 
@@ -356,8 +413,8 @@ plot_error_fsca <- function(alldF,errorvar){
               legend.position=c(1,0))
   } else {
     errlab='"%"*MAE'
-    leg=theme(legend.justification=c(1,0),
-              legend.position=c(1,0))
+    leg=theme(legend.justification=c(1,1),
+              legend.position=c(1,1))
   }
   errlab=parse(text = paste0(errlab,'~of~prediction'))
   
@@ -370,43 +427,68 @@ plot_error_fsca <- function(alldF,errorvar){
 }
 
 #use mylist from other error plots above
-myplots <- 
+fscadata2plot <- 
   lapply(X=mylist,FUN=function(lst){
     # print(head(lst))
     mdldF=lst[[1]]
     errorvar=lst[[2]]
     # print(errorvar)
-    g <- 
+    alldF <- 
       unnest_(mdldF,as.name(errorvar),.drop=T) %>% 
-      full_join(fscastats) %>% 
-      gather(fscametricvar,fscametricval,mae,mse) %>%
-      plot_error_fsca(.,errorvar)
-    return(g)
+      left_join(fscastats) %>% 
+      gather(fscametricvar,fscametricval,mae,mse)
+    return(list(alldF,errorvar))
   })
-plot_grid(plotlist=myplots,ncol=2)
+
+myplots <- 
+  lapply(fscadata2plot,FUN=function(lst){
+    dF=lst[[1]]
+    errorvar=lst[[2]]
+    plot_error_fsca(dF,errorvar)
+  })
+    
+plot_grid(plotlist=myplots,ncol=2,labels=paste0('(',seq(1,16,1),')'))
+            
+            # paste(paste0('(',seq(1,16,2),')'),paste0('(',seq(2,16,2),')'),sep=','))
+
+
 
 ```
 
-```{r}
-# mdldF=bestphvfsca
-# errorvar='pctmae'
+```{r results='asis'}
+mdldF=bestphvfsca
+errorvar='pctmae'
+rm(mdldF,errorvar)
 # expand
-# allmdlpreds <- 
-#   bind_rows(
-#     lapply(X=mylist,function(lst){
-#       mdldF=lst[[1]]
-#       errorvar=lst[[2]]
-#       dF=unnest_(mdldF,as.name(errorvar),.drop=T)
-#       glance(lm)
-#     })
-#   )
-#           
-#           %>% 
-#       full_join(fscastats) %>% 
-#       gather(fscametricvar,fscametricval,mae,mse) %>% 
-#   group_by()
-# 
-# 
+bestfitlines=lapply(X=fscadata2plot,FUN=function(lst){
+    # print(head(lst))
+    mdldF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+    myformula=as.formula(paste(errorvar,'~ fscametricval'))
+    lmdF <- 
+      mdldF %>%
+      group_by(fscametricvar,mdlpreds) %>%
+      nest() %>% 
+      mutate(lmobj=map(data,function(x) lm(myformula,data=x))) 
+    return(lmdF$lmobj)
+  })
 
+
+# mdllabs <- 
+#   paste(
+#   paste(rep(c('phv','phvfsca','phvaso','phvasofsca'),each=4),rep(c('r2','pctmae'),each=2),sep='.'),
+#   rep(c('mae','mse'),length.out=16),sep='.')
+mdllabs <- paste(rep(c('phv','phvfsca','phvaso','phvasofsca'),each=2),rep(c('r2','pctmae'),each=1),sep='.')
+
+stargazer(bestfitlines,type='html',ci=FALSE,flip=F,
+          # covariate.labels=rep(c('fscadiff',),length.out=16),
+          dep.var.labels = mdllabs,
+          column.labels=paste0(rep(seq(1,8),each=2),c('a','s')),
+          keep.stat=c('rsq'),
+          digits=2,
+          report=c('vc*'),
+          no.space=F,
+          out='output/table_predictionerrors-fscametrics.html')
 ```
 
