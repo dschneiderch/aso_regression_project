@@ -108,6 +108,7 @@ rootmse = function(yobs,yhat){
 augmentEnet=function(model,data,asodte=NULL,asoswe2=NULL){
 
   realdata=as.data.frame(data)
+  # print(str(realdata))
   if(!is.null(asodte)) realdata=join_asodata(realdata,asoswe2 %>% filter_(~asodte==asodte))
   x=realdata[['x']]
   y=realdata[['y']]
@@ -120,8 +121,8 @@ augmentEnet=function(model,data,asodte=NULL,asoswe2=NULL){
 }
 
 
-pickAlpha=function(dF,myformula,cl=cl){
-  cvalpha=cvAlpha.glmnet(myformula,data=dF,type.measure='mse',outerParallel=cl)
+pickAlpha=function(dF,myformula,nfolds,cl=cl){
+  cvalpha=cvAlpha.glmnet(myformula,data=dF,nfolds=nfolds,type.measure='mse',outerParallel=cl)
 
   maxlambda=100
   alpha=cvalpha$alpha
@@ -159,17 +160,31 @@ pickAlpha=function(dF,myformula,cl=cl){
   return(bestalpha)
 }
 
-gnet_phv=function(dF,cl=cl){
+gnet_phv=function(dF,cl=NULL){
+  if(is.null(cl)) yesParallel=FALSE else yesParallel=TRUE
+  # print(unique(dF$dte2))
+  # print(str(dF))
   myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight)
-  bestalpha <- pickAlpha(dF,myformula,cl)
-  cvfit=cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = TRUE)
+  nfolds=floor(nrow(dF)/30)
+  # print(nfolds)
+  if(nfolds<4) nfolds=4
+  if(nfolds>10) nfolds=10
+  # print(paste('update:',nfolds))
+  bestalpha <- pickAlpha(dF,myformula,nfolds,cl)
+
+  cvfit=cv.glmnet(myformula,data=dF,nfolds=nfolds,type.measure='mse',alpha=bestalpha,parallel = yesParallel)
   cvfit$alpha=bestalpha
   return(cvfit)
 }
-gnet_phvfsca=function(dF,cl=cl){
+
+gnet_phvfsca=function(dF,cl=NULL){
+  if(is.null(cl)) yesParallel=FALSE else yesParallel=TRUE
+  nfolds=floor(nrow(dF)/30)
+  if(nfolds<4) nfolds=4
+  if(nfolds>10) nfolds=10
   myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+fsca)
-  bestalpha <- pickAlpha(dF,myformula,cl)
-  cvfit=cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = TRUE)
+  bestalpha <- pickAlpha(dF,myformula,nfolds,cl)
+  cvfit=cv.glmnet(myformula,data=dF,nfolds=nfolds,type.measure='mse',alpha=bestalpha,parallel = yesParallel)
   cvfit$alpha=bestalpha
   return(cvfit)
 }
@@ -179,16 +194,20 @@ gnet_phvaso=function(dF,join_asodata=NULL,asoswe2=NULL,cl=NULL,bestasodte=NULL){
   if(!is.null(bestasodte)) {asoswe2=filter(asoswe2,asodte %in% bestasodte)}
   if(!is.null(asoswe2)) {dF=join_asodata(dF,asoswe2)}
   if(is.null(cl)) yesParallel=FALSE else yesParallel=TRUE
+  dFsize <- dF %>% split(.$asodte) %>% map_dbl(nrow) %>% min
+  nfolds=floor(dFsize/30)
+  if(nfolds<4) nfolds=4
+  if(nfolds>10) nfolds=10
 
   myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+asoswe)
-  wrap_cvnet=function(dF,bestalpha,myformula) cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = yesParallel)
+  wrap_cvnet=function(dF,bestalpha,myformula,nfolds) cv.glmnet(myformula,data=dF,nfolds=nfolds,type.measure='mse',alpha=bestalpha,parallel = yesParallel)
 
   dFout=dF %>%
     group_by(asodte) %>%
     nest %>%
     mutate(
-      bestalpha=map_dbl(data,pickAlpha,myformula,cl),
-      phvaso_obj_glmmdl=map2(data,bestalpha,wrap_cvnet,myformula)
+      bestalpha=map_dbl(data,pickAlpha,myformula,nfolds,cl),
+      phvaso_obj_glmmdl=map2(data,bestalpha,wrap_cvnet,myformula,nfolds)
     ) %>%
     dplyr::select(asodte,phvaso_obj_glmmdl)
 
@@ -199,16 +218,20 @@ gnet_phvasofsca=function(dF,join_asodata=NULL,asoswe2=NULL,cl=NULL,bestasodte=NU
   if(!is.null(bestasodte)) asoswe2=filter(asoswe2,asodte %in% bestasodte)
   if(!is.null(asoswe2)) dF=join_asodata(dF,asoswe2)
   if(is.null(cl)) yesParallel=FALSE else yesParallel=TRUE
+  dFsize <- dF %>% split(.$asodte) %>% map_dbl(nrow) %>% min
+  nfolds=floor(dFsize/30)
+  if(nfolds<4) nfolds=4
+  if(nfolds>10) nfolds=10
 
   myformula=as.formula(swe~dem+easting+northing+eastness+northness+zness+vrm1cell+stdslope1cell+vegheight+asoswe+fsca)
-  wrap_cvnet=function(dF,bestalpha,myformula) cv.glmnet(myformula,data=dF,type.measure='mse',alpha=bestalpha,parallel = TRUE)
+  wrap_cvnet=function(dF,bestalpha,myformula,nfolds) cv.glmnet(myformula,data=dF,nfolds=nfolds,type.measure='mse',alpha=bestalpha,parallel = TRUE)
 
   dFout=dF %>%
     group_by(asodte) %>%
     nest %>%
     mutate(
-      bestalpha=map_dbl(data,pickAlpha,myformula,cl),
-      phvasofsca_obj_glmmdl=map2(data,bestalpha,wrap_cvnet,myformula)
+      bestalpha=map_dbl(data,pickAlpha,myformula,nfolds,cl),
+      phvasofsca_obj_glmmdl=map2(data,bestalpha,wrap_cvnet,myformula,nfolds)
     ) %>%
     dplyr::select(asodte,phvasofsca_obj_glmmdl)
 
