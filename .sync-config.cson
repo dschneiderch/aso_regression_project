@@ -3,7 +3,7 @@ remote:
   user: "dosc3612"
   path: "/home/dosc3612/pr/aso_regression_project"
 behaviour:
-  uploadOnSave: true
+  uploadOnSave: false
   syncDownOnOpen: false
   forgetConsole: false
   autoHideConsole: true
