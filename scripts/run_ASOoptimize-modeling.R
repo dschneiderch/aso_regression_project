@@ -134,41 +134,42 @@ saveRDS(plusallphvmdls %>% select(-contains('aug'),-contains('obj')), paste0(pat
 ## need to join aso swe data for asoswe models. doing phv separately before so it isn't fitting models on sets of the same data
 
 allmdldata <- plusallphvmdls %>%
-  select(dte,.id,nsamp,train,test)  # %>% filter(dte==unique(dte)[1:2])
+  select(dte,.id,nsamp,train,test) %>%
+  mutate(yr=substr(dte,1,4))# %>% filter(dte==unique(dte)[1:2])
 rm(allphvmdls)
 
-allasomdls <-
-  allmdldata %>%
-  group_by(dte,.id,nsamp) %>%
-  mutate(#need to join asodata separately because it takes too muchmemory to join with all train elements first
-    phvaso_obj_glmmdl=map(train,gnet_phvaso,join_asodata,asoswe,cl),
-    phvasofsca_obj_glmmdl=map(train,gnet_phvasofsca,join_asodata,asoswe,cl)
-  ) %>%
-  unnest(phvaso_obj_glmmdl,phvasofsca_obj_glmmdl,.drop=FALSE)
+iyr=2013
+for(iyr in unique(allmdldata$yr)){
 
-# if(!identical(allasomdls[[5]],allasomdls[[7]])) stop()
+  allasomdls <-
+    allmdldata %>%
+    filter_(~yr==iyr) %>%
+    group_by(dte,yr,.id,nsamp) %>%
+    mutate(#need to join asodata separately because it takes too muchmemory to join with all train elements first
+      phvaso_obj_glmmdl=map(train,gnet_phvaso,join_asodata,asoswe,cl),
+      phvasofsca_obj_glmmdl=map(train,gnet_phvasofsca,join_asodata,asoswe,cl)
+    ) %>%
+    unnest(phvaso_obj_glmmdl,phvasofsca_obj_glmmdl,.drop=FALSE)
 
-print('phvaso models finished.')
+  # if(!identical(allasomdls[[5]],allasomdls[[7]])) stop()
 
-allasomdls <-
-  allasomdls[!duplicated(as.list(allasomdls))] %>%
-  mutate(
-    phvaso_aug_glmmdl=pmap(list(phvaso_obj_glmmdl,test,asodte),augmentEnet,asoswe),
-    phvaso_coef_glmmdl=map(phvaso_obj_glmmdl,coef),
-    phvasofsca_aug_glmmdl=pmap(list(phvasofsca_obj_glmmdl,test,asodte),augmentEnet,asoswe),
-    phvasofsca_coef_glmmdl=map(phvasofsca_obj_glmmdl,coef)
-  )
+  print('phvaso models finished.')
 
-parallel::stopCluster(cl); cl=NULL
+  allasomdls <-
+    allasomdls[!duplicated(as.list(allasomdls))] %>%
+    mutate(
+      phvaso_aug_glmmdl=pmap(list(phvaso_obj_glmmdl,test,asodte),augmentEnet,asoswe),
+      phvaso_coef_glmmdl=map(phvaso_obj_glmmdl,coef),
+      phvasofsca_aug_glmmdl=pmap(list(phvasofsca_obj_glmmdl,test,asodte),augmentEnet,asoswe),
+      phvasofsca_coef_glmmdl=map(phvasofsca_obj_glmmdl,coef)
+    )
 
-allasomdls <-
-  allasomdls %>%
-  mutate(yr=substr(dte,1,4))
+  parallel::stopCluster(cl); cl=NULL
 
-for(iyr in unique(allasomdls$yr)){
-  saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvaso_aug_glmmdl) %>% filter_(~yr==iyr), paste0(pathout,'phvasomdls_augment_',iyr,'_',ires,'.rds'))
-  saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvaso_coef_glmmdl) %>% filter_(~yr==iyr), paste0(pathout,'phvasomdls_coef_',iyr,'_',ires,'.rds'))
+  saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvaso_aug_glmmdl), paste0(pathout,'phvasomdls_augment_',iyr,'_',ires,'.rds'))
+  saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvaso_coef_glmmdl), paste0(pathout,'phvasomdls_coef_',iyr,'_',ires,'.rds'))
   #
-  saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvasofsca_aug_glmmdl) %>% filter_(~yr==iyr), paste0(pathout,'phvasofscamdls_augment_',iyr,'_',ires,'.rds'))
-  saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvasofsca_coef_glmmdl) %>% filter_(~yr==iyr), paste0(pathout,'phvasofscamdls_coef_',iyr,'_',ires,'.rds'))
+  saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvasofsca_aug_glmmdl), paste0(pathout,'phvasofscamdls_augment_',iyr,'_',ires,'.rds'))
+  saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvasofsca_coef_glmmdl), paste0(pathout,'phvasofscamdls_coef_',iyr,'_',ires,'.rds'))
+
 }
