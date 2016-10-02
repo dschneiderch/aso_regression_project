@@ -27,12 +27,13 @@ writeRaster(fsca_stack,filename='data/fsca/modscag/utm/fsca_500m.tif',bylayer=TR
 
 ## - aso 51m, 99m and 501m fsca created in snowdepth-predict_project from 3m snowdepth ----
 # resample to 500 m
-oldres=99
-newres=100
-dir.create(paste0('data/fsca/aso/utm/',newres,'m'),recursive = TRUE)
-basinmask=raster(paste0('data/gis/tuo_basinmask_',newres,'m.tif'))
-asofsca_fn=dir(paste0('data/fsca/aso/utm/',oldres,'m'),pattern=glob2rx('fsca*.tif$'),full.names = T)
-asofsca=stack(asofsca_fn)
-asofsca_new <- resample(asofsca,basinmask,method='ngb')
-names(asofsca_new) <- gsub('fsca','tuo',names(asofsca_new))
-writeRaster(asofsca_new,filename=paste0('data/fsca/aso/utm/',newres,'m/fsca_',newres,'m.tif'),bylayer=T,suffix='names',NAflag=-99,overwrite=T)
+  oldres=51
+  newres=50
+  dir.create(paste0('data/fsca/aso/utm/',newres,'m'),recursive = TRUE)
+  basinmask=raster(paste0('data/gis/tuo_basinmask_',newres,'m.tif'))
+  asofsca_fn=dir(paste0('data/fsca/aso/utm/',oldres,'m'),pattern=glob2rx('fsca*.tif$'),full.names = T)
+  asofsca=stack(asofsca_fn)
+  asofsca_new <- resample(asofsca,basinmask,method='ngb')
+  asofsca_new <- mask(asofsca_new,basinmask)
+  names(asofsca_new) <- gsub('fsca','tuo',names(asofsca_new))
+  writeRaster(asofsca_new,filename=paste0('data/fsca/aso/utm/',newres,'m/fsca_',newres,'m.tif'),bylayer=T,suffix='names',NAflag=-99,overwrite=T)

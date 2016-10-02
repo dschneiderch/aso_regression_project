@@ -462,7 +462,7 @@ plot_grid(plotlist=myplots,ncol=2,align='hv',labels=paste0('(',seq(1,16,1),')'))
 mdldF=bestphvfsca
 errorvar='pctmae'
 rm(mdldF,errorvar)
-# expand
+
 bestfitlines=lapply(X=fscadata2plot,FUN=function(lst){
     # print(head(lst))
     mdldF=lst[[1]]
