@@ -98,6 +98,7 @@ allphvmdls <-
   )
 
 print('phv models finished.')
+print(pryr::mem_used())
 
 saveRDS(alldata,paste0(pathout,'alldata_',ires,'.rds'))
 saveRDS(allphvmdls %>% select(-contains('coef'),-contains('obj')), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
@@ -123,6 +124,7 @@ allasomdls <-
 if(!identical(allasomdls[[5]],allasomdls[[7]])) stop()
 
 print('phvaso models finished.')
+print(pryr::mem_used())
 
 allasomdls <-
   allasomdls[!duplicated(as.list(allasomdls))] %>%
@@ -138,6 +140,8 @@ parallel::stopCluster(cl); cl=NULL
 allasomdls <-
   allasomdls %>%
   mutate(yr=substr(dte,1,4))
+
+print(pryr::mem_used())
 
 for(iyr in unique(allasomdls$yr)){
   saveRDS(allasomdls %>% select(dte,yr,.id,asodte,phvaso_aug_glmmdl) %>% filter_(~yr==iyr), paste0(pathout,'phvasomdls_augment_',iyr,'_',ires,'.rds'))
