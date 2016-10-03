@@ -102,8 +102,6 @@ phvaso <- phvasomdls %>% dplyr::select(mdldte,phvaso_aug_glmmdl) %>% unnest()
 phvasofsca <- phvasomdls %>% dplyr::select(mdldte,phvasofsca_aug_glmmdl) %>% unnest()
 ```
 
-# r^2^
-
 ```{r heatmap_plotfunction}
 
 statheatmap=function(dF,metricvar){
@@ -115,28 +113,48 @@ statheatmap=function(dF,metricvar){
     theme(axis.text.x=element_text(angle=45,hjust=1))
 }
 
-
+statboxplots=function(dF,metricvar){
+ 
+ggplot(dF)+
+  geom_boxplot(aes_(x=~simdte,y=as.name(metricvar),fill=~mdlpreds),outlier.size=.5)+
+  facet_wrap(~simyr, scales='free', as.table=TRUE)+
+    # guides(fill=guide_colorbar(reverse = T))+
+    theme(axis.text.x=element_text(angle=45,hjust=1))
+}
 
 ```
 
+# r^2^
 
-```{r}
-phvstats <- generate_stats(phv)
+```{r results='asis'}
+phvstats <- generate_stats(phv) %>% mutate(mdlpreds='phv')
 bestphv <- best_stats(phvstats) %>% mutate(mdlpreds='phv')
-phvfscastats <- generate_stats(phvfsca)
+phvfscastats <- generate_stats(phvfsca) %>% mutate(mdlpreds='phvfsca')
 bestphvfsca <- best_stats(phvfscastats) %>% mutate(mdlpreds='phvfsca')
-phvasostats <- generate_stats(phvaso)
+phvasostats <- generate_stats(phvaso) %>% mutate(mdlpreds='phvaso')
 bestphvaso <- best_stats(phvasostats) %>% mutate(mdlpreds='phvaso')
-phvasofscastats <- generate_stats(phvasofsca)
+phvasofscastats <- generate_stats(phvasofsca) %>% mutate(mdlpreds='phvasofsca')
 bestphvasofsca <- best_stats(phvasofscastats) %>% mutate(mdlpreds='phvasofsca')
 #
-allbeststats <- bind_rows(bestphv,bestphvfsca,bestphvaso,bestphvasofsca)
+allbeststats <- bind_rows(bestphv,bestphvfsca,bestphvaso,bestphvasofsca) %>% 
+  mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
+allstats <- bind_rows(phvstats,phvfscastats,phvasostats,phvasofscastats) %>% 
+  mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
+
+unnest(allbeststats,r2) %>% 
+  select(simdte,mdlpreds,r2) %>% 
+  group_by(mdlpreds) %>% 
+  summarise(mean(r2),
+            median(r2)) %>% 
+  kable(.,digits=2,
+        caption='summary of best predictions')
 
 ```
 
 ## phv
 
-```{r}
+```{r eval=F}
+
 statheatmap(phvstats,'r2')+
   scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
   geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
@@ -144,7 +162,8 @@ statheatmap(phvstats,'r2')+
 
 ## phvfsca
 
-```{r}
+```{r eval=F}
+
 statheatmap(phvfscastats,'r2')+
   scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
   geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
@@ -153,7 +172,8 @@ statheatmap(phvfscastats,'r2')+
 
 ## phvaso
 
-```{r}
+```{r eval=F}
+
 statheatmap(phvasostats,'r2')+
   scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
   geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
@@ -162,18 +182,45 @@ statheatmap(phvasostats,'r2')+
 
 ## phvasofsca
 
-```{r}
+```{r eval=F}
+
 statheatmap(phvasofscastats,'r2')+
   scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
   geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
 
 ```
 
+## all model boxplots
+
+```{r}
+allstats %>% 
+  filter(simyr!=mdlyr) %>% 
+statboxplots('r2')+
+  scale_fill_brewer(palette='Paired')+
+  coord_cartesian(ylim=c(0,1))+
+  geom_point(data=unnest(allbeststats,r2),aes(simdte,r2,fill=mdlpreds),shape=23,color='red',position=position_jitterdodge(),size=2,show.legend=F)+
+  theme(legend.justification=c(0,0),
+              legend.position=c(0,0.6))
+  
+```
+
+
+
 # % MAE
+
+```{r results='asis'}
+unnest(allbeststats,pctmae) %>% 
+  select(simdte,mdlpreds,pctmae) %>% 
+  group_by(mdlpreds) %>% 
+  summarise(mean(pctmae),
+            median(pctmae)) %>% 
+  kable(.,digits=2,
+        caption='summary of best predictions')
+```
 
 ## phv
 
-```{r}
+```{r eval=F}
 statheatmap(phvstats,'pctmae')+
   scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
   geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
@@ -181,7 +228,7 @@ statheatmap(phvstats,'pctmae')+
 ```
 
 ## phvfsca
-```{r}
+```{r eval=F}
 statheatmap(phvfscastats,'pctmae')+
   scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
   geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
@@ -190,7 +237,8 @@ statheatmap(phvfscastats,'pctmae')+
 
 ## phvaso
 
-```{r}
+```{r eval=F}
+
 statheatmap(phvasostats,'pctmae')+
   scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
   geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
@@ -199,10 +247,24 @@ statheatmap(phvasostats,'pctmae')+
 
 ## phvasofsca
 
-```{r}
+```{r eval=F}
+
 statheatmap(phvasofscastats,'pctmae')+
   scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
   geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
+```
+
+## all model boxplots
+
+```{r}
+allstats %>% 
+  filter(simyr!=mdlyr) %>% 
+statboxplots('pctmae')+
+  scale_fill_brewer(palette='Paired')+
+  coord_cartesian(ylim=c(0,300))+
+  geom_point(data=unnest(allbeststats,pctmae),aes(simdte,pctmae,fill=mdlpreds),shape=23,color='red',position=position_jitterdodge(),size=2,show.legend=F)+
+  theme(legend.justification=c(0,1),
+              legend.position=c(0.55,0.4))
 ```
 
 # compare best errors vs basin aggregated snow variables
@@ -382,6 +444,9 @@ bestfsca_mse <-
             mdlyr=substr(mdldte,1,4),
             mae=min(mse))
 
+```
+
+```{r eval=F}
 
 fscastats %>%
   select(-mse) %>%
