@@ -30,13 +30,13 @@ knitr::opts_chunk$set(cache=FALSE,echo=FALSE,message = FALSE,warning=FALSE,error
 ```{r params}
 ires='500m'
 basin='tuo'
-pathin='output/splitsample-modeling/'
+pathin='output/splitsample-modeling/20iterations/'
 ```
 
 ```{r data}
 alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
 
-predictions=readRDS(paste0('output/splitsample-modeling/stats_combined_splitsample',ires,'.rds'))
+predictions=readRDS(paste0(pathin,'stats_combined_',ires,'.rds'))
 ```
 
 # Error distribution of all aso dates
@@ -89,9 +89,9 @@ ggplot(mdlstats2)+
 # Best Predictions from each model
 
 ```{r bestasodates}
-bd_phvaso=read_tsv(paste0('output/splitsample-modeling/bestasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
+bd_phvaso=read_tsv(paste0(pathin,'bestasodates_phvaso_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
 
-bd_phvasofsca=read_tsv(paste0('output/splitsample-modeling/bestasodates_phvasofsca_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
+bd_phvasofsca=read_tsv(paste0(pathin,'bestasodates_phvasofsca_',ires,'.txt'),col_types=cols(dte='c',bestasodte='c',bestrmse='d',bestpctrmse='d'))
 
 ```
 
@@ -112,12 +112,16 @@ bestpreds <-
   mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
 
 bestpreds %>%
-  group_by(mdlpreds,metricvar) %>%
+  spread(metricvar,metricval) %>% 
+  group_by(mdlpreds) %>% 
+  # group_by(mdlpreds,metricvar) %>%
   summarise(
-    avg=mean(metricval),
+    mean(pctmae),
+    sd(pctmae),
+    mean(r2),
+    sd(r2),
     N=n()
-  ) %>%
-  spread(metricvar,avg) %>%
+  ) %>% 
   knitr::kable(.,digits=2,scientific=F)
 
 ggplot(bestpreds)+
