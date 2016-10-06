@@ -33,6 +33,8 @@ pathin='output/xdate-modeling/'
 ```
 
 ```{r functions}
+invisible(lapply(dir('lib','.R',full.names=T),source))
+
 r2 <- function(yobs,yhat){
   cor(yobs,yhat,use='complete.obs')^2
 }
@@ -145,7 +147,8 @@ unnest(allbeststats,r2) %>%
   select(simdte,mdlpreds,r2) %>% 
   group_by(mdlpreds) %>% 
   summarise(mean(r2),
-            median(r2)) %>% 
+            median(r2),
+            sd(r2)) %>% 
   kable(.,digits=2,
         caption='summary of best predictions')
 
@@ -213,7 +216,8 @@ unnest(allbeststats,pctmae) %>%
   select(simdte,mdlpreds,pctmae) %>% 
   group_by(mdlpreds) %>% 
   summarise(mean(pctmae),
-            median(pctmae)) %>% 
+            median(pctmae),
+            sd(pctmae)) %>% 
   kable(.,digits=2,
         caption='summary of best predictions')
 ```
@@ -269,7 +273,7 @@ statboxplots('pctmae')+
 
 # compare best errors vs basin aggregated snow variables
 
-```{r plot-prederror-basinsnow}
+```{r plot-bestprederror-basinsnow}
 basinstats <-
   alldata %>%
   dplyr::select(dte,swe,fsca) %>%
@@ -299,10 +303,10 @@ compare_mdlsim <- function(mdlpreds1,errorvar,errordF){
   alldF <-
     bind_rows(dF1,dF2) %>%
     group_by_(as.name(errorvar)) %>%
-    mutate(avgswediff=abs(diff(avg_swe)/avg_swe[2])*100,
-           mvswediff=abs(diff(mv_swe)/mv_swe[2])*100,
-           medfscadiff=abs(diff(med_fsca)/med_fsca[2])*100,
-           mvfscadiff=abs(diff(mv_fsca)/mv_fsca[2]*100)) %>%
+    mutate(avgswediff=abs(diff(avg_swe)/avg_swe[1])*100,
+           mvswediff=abs(diff(mv_swe)/mv_swe[1])*100,
+           medfscadiff=abs(diff(med_fsca)/med_fsca[1])*100,
+           mvfscadiff=abs(diff(mv_fsca)/mv_fsca[1]*100)) %>%
     gather(snowvar,snowval,avgswediff:mvfscadiff) %>%
     mutate(snowvar=factor(snowvar,levels=c('avgswediff','mvswediff','medfscadiff','mvfscadiff')))
 
@@ -325,7 +329,7 @@ plot_error_snow <- function(alldF,errorvar){
   ggplot(alldF,aes_(x=~snowval,y=as.name(errorvar),colour=~snowvar))+
     geom_point()+
     geom_smooth(method='lm',se=F)+
-    labs(x='|sim-mdl|/mdl*100 [%]',y=errlab,title=unique(alldF$mdlpreds))+
+    labs(x='|sim-mdl|/sim*100 [%]',y=errlab,title=unique(alldF$mdlpreds))+
     scale_color_brewer(palette='Paired')+
     limx+
     leg
@@ -407,6 +411,51 @@ stargazer(bestfitlines,
 
 ```
 
+# compare all errors vs basin aggregated snow variables
+
+```{r plot-allprederror-basinsnow, fig.width=24}
+#, fig.height=2*24}
+l2=list(phvstats,phvfscastats,phvasostats,phvasofscastats)
+ev=c('r2','pctmae')
+mylist_all=lapply(l2,FUN=function(x){
+  lapply(ev,FUN=function(v1) list(x,v1))
+}) %>% unlist(recursive=F)#or purrr::flatten
+
+snowdata2plot_all <-
+  lapply(X=mylist_all,FUN=function(lst){
+  # print(head(lst))
+    mdldF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+  alldF <-
+    compare_mdlsim(unique(mdldF$mdlpreds),errorvar,mdldF)
+  return(list(alldF,errorvar))
+  })
+
+myplots_all <-
+  lapply(snowdata2plot_all,FUN=function(lst) {
+    # print(lst)
+    dF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+    g <- plot_error_snow(dF,errorvar)+
+            facet_wrap(~dte,scales='free')+
+            coord_cartesian(xlim=c(0,125))
+    if(errorvar=='pctmae') g <- g + coord_cartesian(xlim=c(0,125),ylim=c(0,200)) + theme(legend.position=c(.96,.12))      
+    return(g)
+    })
+
+plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
+
+pg_snow <- 
+  plot_grid(plotlist=myplots_all,
+            ncol=2,
+            align='hv',
+            labels=paste0('(',seq(1,8,1),')'))
+# show(pg_snow)
+save_plot(pg_snow,nrow=8,ncol=2,filename='figs/so_many_snowplots.pdf',base_width=12)
+```
+
 # compare best errors vs fsca pattern differences
 
 ```{r fsca-pattern-comparison}
@@ -423,8 +472,8 @@ fscadata <- full_join(mdldata,simdata,by=c('x','y'))
 fscastats <-
   fscadata %>%
   group_by(mdldte,simdte) %>%
-  summarise(mae=mae(simfsca,mdlfsca),
-            mse=mse(simfsca,mdlfsca)
+  summarise(mae=mae(simfsca,mdlfsca)/mean(simfsca,na.rm=T),
+            mse=mse(simfsca,mdlfsca)/mean(simfsca,na.rm=T)
   ) %>%
   mutate(simyr=substr(simdte,1,4),
          mdlyr=substr(mdldte,1,4))
@@ -472,14 +521,16 @@ ggplot()+
 
 ```
 
-```{r plot-prederrors-fscapattern}
+```{r plot-bestprederrors-fscapattern}
 
 plot_error_fsca <- function(alldF,errorvar){
   if(errorvar=='r2') {
+    yax=coord_cartesian()
     errlab='r^2'
     leg=theme(legend.justification=c(1,0),
               legend.position=c(1,0))
   } else {
+    yax=coord_cartesian()#coord_cartesian(ylim=c(0,200))
     errlab='"%"*MAE'
     leg=theme(legend.justification=c(1,1),
               legend.position=c(1,1))
@@ -489,10 +540,19 @@ plot_error_fsca <- function(alldF,errorvar){
   ggplot(alldF,aes_(x=~fscametricval,y=as.name(errorvar),colour=~fscametricvar))+
     geom_point()+
     geom_smooth(method='lm',se=F)+
+    yax+
     labs(x='pixel-wise pattern difference',y=errlab,title=unique(alldF$mdlpreds))+
     scale_color_brewer(palette='Paired')+
     leg
 }
+
+
+l=list(bestphv,bestphvfsca,bestphvaso,bestphvasofsca)
+ev=c('r2','pctmae')
+mylist=lapply(l,FUN=function(x){
+  lapply(ev,FUN=function(v1) list(x,v1))
+}) %>% unlist(recursive=F)#or purrr::flatten
+
 
 #use mylist from other error plots above
 fscadata2plot <-
@@ -504,9 +564,10 @@ fscadata2plot <-
     alldF <-
       unnest_(mdldF,as.name(errorvar),.drop=T) %>%
       left_join(fscastats) %>%
-      gather(fscametricvar,fscametricval,mae,mse)
+      gather(fscametricvar,fscametricval,mae,mse) %>% 
+        filter(simyr!=mdlyr)
     return(list(alldF,errorvar))
-  })
+  }) 
 
 myplots <-
   lapply(fscadata2plot,FUN=function(lst){
@@ -516,10 +577,7 @@ myplots <-
   })
 
 plot_grid(plotlist=myplots,ncol=2,align='hv',labels=paste0('(',seq(1,16,1),')'))
-
             # paste(paste0('(',seq(1,16,2),')'),paste0('(',seq(2,16,2),')'),sep=','))
-
-
 
 ```
 
@@ -560,9 +618,53 @@ stargazer(bestfitlines,type='html',ci=FALSE,flip=F,
           out='output/table_predictionerrors-fscametrics.html')
 ```
 
-# confusion reigns. are the differences in patterns of fsca and swe similar?
+# compare all errors vs fsca pattern differences by date
 
-More yellow means prediction was better. x and y axis represent the differences between simulation date and model date expressed as mean squared error or mean absolute error.
+```{r plot-allprederrors-fscapattern, fig.width=24}
+#,fig.height=2*24}
+l2=list(phvstats,phvfscastats,phvasostats,phvasofscastats)
+ev=c('r2','pctmae')
+mylistall=lapply(l2,FUN=function(x){
+  lapply(ev,FUN=function(v1) list(x,v1))
+}) %>% unlist(recursive=F)#or purrr::flatten
+
+
+#use mylist from other error plots above
+fscadata2plot_all <-
+  lapply(X=mylistall,FUN=function(lst){
+    # print(head(lst))
+    mdldF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+    alldF <-
+      mdldF %>%
+      left_join(fscastats) %>%
+      gather(fscametricvar,fscametricval,mae,mse) %>% 
+        filter(simyr!=mdlyr)      
+    return(list(alldF,errorvar))
+  }) 
+
+
+myplots_all <-
+  lapply(fscadata2plot_all,FUN=function(lst){
+    dF=lst[[1]]
+    errorvar=lst[[2]]
+    g <- plot_error_fsca(dF,errorvar)+
+      facet_wrap(~simdte,scales='free')
+    if(errorvar=='pctmae') g <- g + theme(legend.position=c(.98,.13))
+    return(g)
+  })
+plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
+
+pg=plot_grid(plotlist=myplots_all,ncol=2,align='hv',labels=paste0('(',seq(1,16,1),')'))
+# show(pg)
+save_plot(pg,nrow=8,ncol=2,base_width=12,filename = 'figs/so_many_fscaplots.pdf')
+
+```
+
+# are the differences in patterns of fsca and swe similar?
+
+comparison of maps for each date but leaving out maps from the same year in the comparison
 
 ```{r plot_fscadiff-snowdiff}
 mdldata <- simdata <-
@@ -578,8 +680,8 @@ swedata <- full_join(mdldata,simdata,by=c('x','y'))
 swestats <-
   swedata %>%
   group_by(mdldte,simdte) %>%
-  summarise(mae=mae(simswe,mdlswe),
-            mse=mse(simswe,mdlswe)
+  summarise(mae=mae(simswe,mdlswe)/mean(simswe,na.rm=T),
+            mse=mse(simswe,mdlswe)/mean(simswe,na.rm=T)
   ) %>%
   mutate(simyr=substr(simdte,1,4),
          mdlyr=substr(mdldte,1,4),
@@ -597,6 +699,50 @@ mae_stats <-  bind_rows(swestats,fscastats %>% mutate(var='fsca')) %>%
 
 snow_stats=bind_rows(mse_stats,mae_stats)
 
+```
+
+
+```{r swemae_vs_fscamae}
+snow_stats_otheryrs <- 
+  snow_stats %>% 
+  filter(diffmetric=='mae',
+         simyr!=mdlyr)
+
+sslm <- 
+  snow_stats_otheryrs %>% 
+  group_by(simdte) %>% 
+  nest() %>% 
+  mutate(mdlobj=map(data,~glm(swe~fsca,data=.)))
+
+ssr2 <- 
+  sslm %>% 
+  unnest(map(mdlobj,glance)) %>% 
+  select(simdte,mdlobj) %>% 
+  mutate(x=0,
+         # y=1,
+         label=map_chr(mdlobj,bestfit_r2,multiline=TRUE))
+
+datamax <- snow_stats_otheryrs %>% 
+  group_by(simdte) %>% 
+  summarise(y=max(swe))
+
+ssr2 <- 
+  left_join(ssr2,datamax,by='simdte')
+
+ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  geom_text(data=ssr2,aes(x,y,label=label),parse=TRUE,hjust=0,vjust=1)+
+  facet_wrap(~simdte,scales='free')
+
+```
+
+## swe and fsca difference for best predictions
+
+More yellow means prediction was better. x and y axis represent the differences between simulation date and model date expressed as mean squared error or mean absolute error.
+
+
+```{r}
 pltdata <-
   bind_rows(
     lapply(mylist,FUN=function(lst){
