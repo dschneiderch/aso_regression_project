@@ -19,6 +19,8 @@ library(cowplot)
 library(RColorBrewer)
 library(knitr)
 library(stargazer)
+library(glmnetUtils)
+
 
 #must have rprojroot installed from devtools::install_github("krlmlr/rprojroot")
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
@@ -34,6 +36,8 @@ pathin='output/xdate-modeling/'
 
 ```{r functions}
 invisible(lapply(dir('lib','.R',full.names=T),source))
+source('scripts/functions_modelfitting.R')
+
 
 r2 <- function(yobs,yhat){
   cor(yobs,yhat,use='complete.obs')^2
@@ -47,6 +51,11 @@ pctmae <- function(yobs,yhat){
 mse <- function(yobs,yhat){
   mean((yhat-yobs)^2,na.rm=T)
 }
+
+fix_data=function(df,alldata2) {
+  mutate(df, simdte=alldata2$dte) #need to add simdate to aug data
+}
+
 generate_stats=function(dF){
   dF %>%
   group_by(mdldte,simdte) %>%
@@ -83,20 +92,14 @@ best_stats <- function(dF){
 alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
 
 phvmdls <- readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
-  mutate(phv_aug_glmmdl=map(phv_aug_glmmdl,
-                            function(df,alldata2) {mutate(df,simdte=alldata2$dte)},
-                            alldata),
-         phvfsca_aug_glmmdl=map(phvfsca_aug_glmmdl,
-                                function(df,alldata2) {mutate(df,simdte=alldata2$dte)},
-                                alldata))
+  mutate(phv_aug_glmmdl=map(phv_aug_glmmdl, fix_data, alldata),
+         phvfsca_aug_glmmdl=map(phvfsca_aug_glmmdl, fix_data, alldata)
+  )
 
 phvasomdls <- readRDS(paste0(pathin,'asomdls_augment_',ires,'.rds')) %>%
-  mutate(phvaso_aug_glmmdl=map(phvaso_aug_glmmdl,
-                            function(df,alldata2) {mutate(df,simdte=alldata2$dte)},
-                            alldata),
-         phvasofsca_aug_glmmdl=map(phvasofsca_aug_glmmdl,
-                                function(df,alldata2) {mutate(df,simdte=alldata2$dte)},
-                                alldata))
+  mutate(phvaso_aug_glmmdl=map(phvaso_aug_glmmdl, fix_data, alldata),
+         phvasofsca_aug_glmmdl=map(phvasofsca_aug_glmmdl, fix_data, alldata)
+  )
 
 phv <- phvmdls %>% dplyr::select(mdldte,phv_aug_glmmdl) %>% unnest()
 phvfsca <- phvmdls %>% dplyr::select(mdldte,phvfsca_aug_glmmdl) %>% unnest()
@@ -271,9 +274,163 @@ statboxplots('pctmae')+
               legend.position=c(0.55,0.4))
 ```
 
-# compare best errors vs basin aggregated snow variables
+# are the differences in patterns of fsca and swe similar? can fsca patterns be used to pick the date to predict swe?
 
-```{r plot-bestprederror-basinsnow}
+comparison of maps for each date but leaving out maps from the same year in the comparison
+
+```{r fsca-pattern-comparison, eval=T}
+mdldata <- simdata <-
+  alldata %>%
+  dplyr::select(dte,x,y,fsca)
+
+mdldata <- mdldata %>% rename(mdldte=dte,
+                              mdlfsca=fsca)
+simdata <- simdata %>% rename(simdte=dte,
+                              simfsca=fsca)
+fscadata <- full_join(mdldata,simdata,by=c('x','y'))
+
+fscastats <-
+  fscadata %>%
+  group_by(mdldte,simdte) %>%
+  summarise(mae=mae(simfsca,mdlfsca),
+            mse=mse(simfsca,mdlfsca)
+  ) %>%
+  mutate(simyr=substr(simdte,1,4),
+         mdlyr=substr(mdldte,1,4))
+
+bestfsca_mae <-
+  fscastats %>%
+  filter(mdlyr!=simyr) %>%
+  group_by(simdte,simyr) %>%
+  summarise(mdldte=mdldte[which.min(mae)],
+            mdlyr=substr(mdldte,1,4),
+            mae=min(mae))
+bestfsca_mse <-
+  fscastats %>%
+  filter(mdlyr!=simyr) %>%
+  group_by(simdte,simyr) %>%
+  summarise(mdldte=mdldte[which.min(mse)],
+            mdlyr=substr(mdldte,1,4),
+            mae=min(mse))
+
+```
+
+```{r plot_fscadiff-snowdiff}
+mdldata <- simdata <-
+  alldata %>%
+  dplyr::select(dte,x,y,swe)
+
+mdldata <- mdldata %>% rename(mdldte=dte,
+                              mdlswe=swe)
+simdata <- simdata %>% rename(simdte=dte,
+                              simswe=swe)
+swedata <- full_join(mdldata,simdata,by=c('x','y'))
+
+swestats <-
+  swedata %>%
+  group_by(mdldte,simdte) %>%
+  summarise(mae=mae(simswe,mdlswe),
+            mse=mse(simswe,mdlswe)
+  ) %>%
+  mutate(simyr=substr(simdte,1,4),
+         mdlyr=substr(mdldte,1,4),
+         var='swe')
+
+mse_stats <- bind_rows(swestats,fscastats %>% mutate(var='fsca')) %>%
+  dplyr::select(-mae) %>%
+  spread(var,mse) %>%
+  mutate(diffmetric='mse')
+
+mae_stats <-  bind_rows(swestats,fscastats %>% mutate(var='fsca')) %>%
+  dplyr::select(-mse) %>%
+  spread(var,mae) %>%
+  mutate(diffmetric='mae')
+
+snow_stats=bind_rows(mse_stats,mae_stats)
+
+```
+
+## with mean absolute error
+
+```{r swemae_vs_fscamae}
+snow_stats_otheryrs <- 
+  snow_stats %>% 
+  filter(diffmetric=='mae',
+         simyr!=mdlyr)
+
+sslm <- 
+  snow_stats_otheryrs %>% 
+  group_by(simdte) %>% 
+  nest() %>% 
+  mutate(mdlobj=map(data,~glm(swe~fsca,data=.)))
+
+ssr2 <- 
+  sslm %>% 
+  unnest(map(mdlobj,glance)) %>% 
+  select(simdte,mdlobj) %>% 
+  mutate(x=0,
+         # y=1,
+         label=map_chr(mdlobj,bestfit_r2,multiline=TRUE))
+
+datamax <- snow_stats_otheryrs %>% 
+  group_by(simdte) %>% 
+  summarise(y=max(swe))
+
+ssr2 <- 
+  left_join(ssr2,datamax,by='simdte')
+
+ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  geom_text(data=ssr2,aes(x,y,label=label),parse=TRUE,hjust=0,vjust=1)+
+  facet_wrap(~simdte,scales='free')
+
+```
+
+## with mean squared error
+
+more dates are statistically significant with mae so we'll stick with that.
+
+```{r swemse_vs_fscamse, eval=F}
+snow_stats_otheryrs <- 
+  snow_stats %>% 
+  filter(diffmetric=='mse',
+         simyr!=mdlyr)
+
+sslm <- 
+  snow_stats_otheryrs %>% 
+  group_by(simdte) %>% 
+  nest() %>% 
+  mutate(mdlobj=map(data,~glm(swe~fsca,data=.)))
+
+ssr2 <- 
+  sslm %>% 
+  unnest(map(mdlobj,glance)) %>% 
+  select(simdte,mdlobj) %>% 
+  mutate(x=0,
+         # y=1,
+         label=map_chr(mdlobj,bestfit_r2,multiline=TRUE))
+
+datamax <- snow_stats_otheryrs %>% 
+  group_by(simdte) %>% 
+  summarise(y=max(swe))
+
+ssr2 <- 
+  left_join(ssr2,datamax,by='simdte')
+
+ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  geom_text(data=ssr2,aes(x,y,label=label),parse=TRUE,hjust=0,vjust=1)+
+  facet_wrap(~simdte,scales='free')
+
+```
+
+
+
+# compare prediction errors vs basin aggregated snow variables
+
+```{r calculate_basinstats}
 basinstats <-
   alldata %>%
   dplyr::select(dte,swe,fsca) %>%
@@ -285,6 +442,17 @@ basinstats <-
     mv_fsca=sd(fsca)*median(fsca)
   )
 
+# prediction errors
+l=list(bestphv,bestphvfsca,bestphvaso,bestphvasofsca)
+ev=c('r2','pctmae')
+mylist=lapply(l,FUN=function(x){
+  lapply(ev,FUN=function(v1) list(x,v1))
+}) %>% unlist(recursive=F)#or purrr::flatten
+
+
+```
+
+```{r fun-prederrors-snow}
 compare_mdlsim <- function(mdlpreds1,errorvar,errordF){
   dF1 <-
     left_join(select_(errordF,~matches('sim'),as.name(errorvar)),
@@ -334,14 +502,13 @@ plot_error_snow <- function(alldF,errorvar){
     limx+
     leg
 }
+```
 
+## compare with best errors
 
-l=list(bestphv,bestphvfsca,bestphvaso,bestphvasofsca)
-ev=c('r2','pctmae')
-mylist=lapply(l,FUN=function(x){
-  lapply(ev,FUN=function(v1) list(x,v1))
-}) %>% unlist(recursive=F)#or purrr::flatten
+this doesn't show much. errors go up end of season while mean swe goes down....
 
+```{r plot-bestprederror-basinsnow, eval=F}
 snowdata2plot <-
   lapply(X=mylist,FUN=function(lst){
   # print(head(lst))
@@ -368,7 +535,7 @@ plot_grid(plotlist=myplots,
 
 ```
 
-```{r table-prederror-basinsnow, results='asis'}
+```{r table-prederror-basinsnow, results='asis', eval=F}
 # mdlpreds='phvfsca'
 # mdldF=bestphvfsca
 # errorvar='pctmae'
@@ -411,7 +578,7 @@ stargazer(bestfitlines,
 
 ```
 
-# compare all errors vs basin aggregated snow variables
+## compare with all errors
 
 ```{r plot-allprederror-basinsnow, fig.width=24}
 #, fig.height=2*24}
@@ -445,7 +612,8 @@ myplots_all <-
     return(g)
     })
 
-plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
+# plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
+# plot_grid(plotlist=myplots_all[7:8],ncol=2,align='hv')
 
 pg_snow <- 
   plot_grid(plotlist=myplots_all,
@@ -456,46 +624,8 @@ pg_snow <-
 save_plot(pg_snow,nrow=8,ncol=2,filename='figs/so_many_snowplots.pdf',base_width=12)
 ```
 
-# compare best errors vs fsca pattern differences
-
-```{r fsca-pattern-comparison}
-mdldata <- simdata <-
-  alldata %>%
-  dplyr::select(dte,x,y,fsca)
-
-mdldata <- mdldata %>% rename(mdldte=dte,
-                              mdlfsca=fsca)
-simdata <- simdata %>% rename(simdte=dte,
-                              simfsca=fsca)
-fscadata <- full_join(mdldata,simdata,by=c('x','y'))
-
-fscastats <-
-  fscadata %>%
-  group_by(mdldte,simdte) %>%
-  summarise(mae=mae(simfsca,mdlfsca)/mean(simfsca,na.rm=T),
-            mse=mse(simfsca,mdlfsca)/mean(simfsca,na.rm=T)
-  ) %>%
-  mutate(simyr=substr(simdte,1,4),
-         mdlyr=substr(mdldte,1,4))
-
-bestfsca_mae <-
-  fscastats %>%
-  filter(mdlyr!=simyr) %>%
-  group_by(simdte,simyr) %>%
-  summarise(mdldte=mdldte[which.min(mae)],
-            mdlyr=substr(mdldte,1,4),
-            mae=min(mae))
-bestfsca_mse <-
-  fscastats %>%
-  filter(mdlyr!=simyr) %>%
-  group_by(simdte,simyr) %>%
-  summarise(mdldte=mdldte[which.min(mse)],
-            mdlyr=substr(mdldte,1,4),
-            mae=min(mse))
-
-```
-
-```{r eval=F}
+# compare prediction errors vs fsca pattern differences
+```{r fscastats_rasters, eval=F}
 
 fscastats %>%
   select(-mse) %>%
@@ -521,8 +651,8 @@ ggplot()+
 
 ```
 
-```{r plot-bestprederrors-fscapattern}
 
+```{r fun-prederrors-fsca}
 plot_error_fsca <- function(alldF,errorvar){
   if(errorvar=='r2') {
     yax=coord_cartesian()
@@ -546,14 +676,13 @@ plot_error_fsca <- function(alldF,errorvar){
     leg
 }
 
+```
 
-l=list(bestphv,bestphvfsca,bestphvaso,bestphvasofsca)
-ev=c('r2','pctmae')
-mylist=lapply(l,FUN=function(x){
-  lapply(ev,FUN=function(v1) list(x,v1))
-}) %>% unlist(recursive=F)#or purrr::flatten
+## compare with best errors only
 
+again not a very useful plot. errors go up as fsca mae goes down (due to smaller differences when there is less snow cover)
 
+```{r plot-bestprederrors-fscapattern, eval=F}
 #use mylist from other error plots above
 fscadata2plot <-
   lapply(X=mylist,FUN=function(lst){
@@ -576,12 +705,12 @@ myplots <-
     plot_error_fsca(dF,errorvar)
   })
 
-plot_grid(plotlist=myplots,ncol=2,align='hv',labels=paste0('(',seq(1,16,1),')'))
+plot_grid(plotlist=myplots,ncol=2,align='hv',labels=paste0('(',seq(1,8,1),')'))
             # paste(paste0('(',seq(1,16,2),')'),paste0('(',seq(2,16,2),')'),sep=','))
 
 ```
 
-```{r table-predictionerrors-fscapattern, results='asis'}
+```{r table-predictionerrors-fscapattern, results='asis', eval=F}
 mdldF=bestphvfsca
 errorvar='pctmae'
 rm(mdldF,errorvar)
@@ -618,9 +747,9 @@ stargazer(bestfitlines,type='html',ci=FALSE,flip=F,
           out='output/table_predictionerrors-fscametrics.html')
 ```
 
-# compare all errors vs fsca pattern differences by date
+## compare with all errors by date
 
-```{r plot-allprederrors-fscapattern, fig.width=24}
+```{r plot-allprederrors-fscapattern, results='asis',fig.width=24}
 #,fig.height=2*24}
 l2=list(phvstats,phvfscastats,phvasostats,phvasofscastats)
 ev=c('r2','pctmae')
@@ -649,12 +778,13 @@ myplots_all <-
   lapply(fscadata2plot_all,FUN=function(lst){
     dF=lst[[1]]
     errorvar=lst[[2]]
-    g <- plot_error_fsca(dF,errorvar)+
+    g <- plot_error_fsca(dF %>% filter(fscametricvar=='mae'),errorvar)+
       facet_wrap(~simdte,scales='free')
     if(errorvar=='pctmae') g <- g + theme(legend.position=c(.98,.13))
     return(g)
   })
-plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
+# plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
+# plot_grid(plotlist=myplots_all[7:8],ncol=2,align='hv')
 
 pg=plot_grid(plotlist=myplots_all,ncol=2,align='hv',labels=paste0('(',seq(1,16,1),')'))
 # show(pg)
@@ -662,87 +792,421 @@ save_plot(pg,nrow=8,ncol=2,base_width=12,filename = 'figs/so_many_fscaplots.pdf'
 
 ```
 
-# are the differences in patterns of fsca and swe similar?
+see "figs/so_many_fscaplots.pdf" for all plots
 
-comparison of maps for each date but leaving out maps from the same year in the comparison
+## Table of significant slopes
 
-```{r plot_fscadiff-snowdiff}
-mdldata <- simdata <-
-  alldata %>%
-  dplyr::select(dte,x,y,swe)
+```{r table_slopes, results='asis', fig.width=24,out.width='\\textwidth'}
 
-mdldata <- mdldata %>% rename(mdldte=dte,
-                              mdlswe=swe)
-simdata <- simdata %>% rename(simdte=dte,
-                              simswe=swe)
-swedata <- full_join(mdldata,simdata,by=c('x','y'))
+slopedf <- 
+  bind_rows(
+    lapply(fscadata2plot_all,function(lst){
+      dF=lst[[1]]
+      errorvar=lst[[2]]
+      myform=as.formula(paste(errorvar,'~fscametricval'))
+      newlist <- 
+        dF %>%
+        filter(fscametricvar=='mae') %>% 
+        split(.$simdte) %>% 
+        map(~lm(myform,data=.)) %>% 
+        map(tidy)
+      bind_rows(newlist) %>% mutate(simdte=rep(names(newlist),each=2),
+                                    errorvar,
+                                    mdlpreds=rep(unique(dF$mdlpreds),2*length(newlist)))
+    })
+  )
 
-swestats <-
-  swedata %>%
-  group_by(mdldte,simdte) %>%
-  summarise(mae=mae(simswe,mdlswe)/mean(simswe,na.rm=T),
-            mse=mse(simswe,mdlswe)/mean(simswe,na.rm=T)
-  ) %>%
-  mutate(simyr=substr(simdte,1,4),
-         mdlyr=substr(mdldte,1,4),
-         var='swe')
+r2slopes <- 
+  slopedf %>% 
+  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>% 
+  filter(term!='(Intercept)',errorvar=='r2') %>% 
+  spread(errorvar,estimate)
 
-mse_stats <- bind_rows(swestats,fscastats %>% mutate(var='fsca')) %>%
-  dplyr::select(-mae) %>%
-  spread(var,mse) %>%
-  mutate(diffmetric='mse')
+r2slp <- 
+  r2slopes %>% 
+  select(simdte,mdlpreds,r2,p.value) %>% 
+  rename(slope=r2) %>% 
+  mutate(slope=ifelse(p.value<=0.05,sprintf(fmt='%.02f',slope),'-'),
+         mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')),
+         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>% 
+  select(-p.value) %>% 
+  spread(mdlpreds,slope) %>%
+  mutate(sep='| ')
 
-mae_stats <-  bind_rows(swestats,fscastats %>% mutate(var='fsca')) %>%
-  dplyr::select(-mse) %>%
-  spread(var,mae) %>%
-  mutate(diffmetric='mae')
 
-snow_stats=bind_rows(mse_stats,mae_stats)
+pctmaeslopes <- 
+  slopedf %>% 
+  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>% 
+  filter(term!='(Intercept)',errorvar=='pctmae') %>% 
+  spread(errorvar,estimate)
+
+pctmslp <- 
+  pctmaeslopes %>% 
+  select(simdte,mdlpreds,pctmae,p.value) %>% 
+  rename(slope=pctmae) %>% 
+  mutate(slope=ifelse(p.value<=0.05,sprintf(fmt='%.02f',slope),'-'),
+         mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')),
+         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>% 
+  select(-p.value) %>% 
+  spread(mdlpreds,slope)
+
+
+stargazer(bind_cols(r2slp,pctmslp),
+          type='html',
+          summary=FALSE,
+          rownames=FALSE,
+          no.space=TRUE,
+          out = 'output/prederror_slopes_allerrors-fscamae.html')
+
+```
+
+## combine pred error best fit lines by mdlpreds, plot mean +/- se
+
+```{r plot_combinedslopes, fig.height=12}
+lst=fscadata2plot_all[[1]]
+slopedf <- 
+  bind_rows(
+    lapply(fscadata2plot_all,function(lst){
+      dF=lst[[1]]
+      errorvar=lst[[2]]
+      myform=as.formula(paste(errorvar,'~fscametricval'))
+      newlist <- 
+        dF %>%
+        filter(fscametricvar=='mae') %>% 
+        split(.$simdte) %>% 
+        map(~lm(myform,data=.)) %>% 
+        map(function(obj) { 
+          newdata=data.frame(fscametricval=seq(0,1,.01))
+          if(glance(obj)$p.value<=0.05){
+            data_frame(fscamae=seq(0,1,0.01),
+                       pred=predict(object=obj,newdata=newdata)
+            )} else {
+              # print(obj$model)
+            data_frame(fscamae=seq(0,1,0.01),
+                       pred=mean(obj$model[,1]))
+            }
+            })
+      
+      bind_rows(newlist,.id='simdte') %>% 
+        mutate(errorvar,
+               mdlpreds=unique(dF$mdlpreds))
+    })
+  )
+
+
+
+combinedslopedf <- 
+  slopedf %>% 
+  group_by(mdlpreds,errorvar,fscamae) %>% 
+  summarise(avg=mean(pred),
+            se=sd(pred)/sqrt(n()),
+            u=avg+se,
+            l=avg-se)
+
+mdf <- 
+  combinedslopedf %>% 
+  group_by(mdlpreds,errorvar) %>% 
+  summarise(
+            m=diff(range(avg))
+  ) %>% 
+  ungroup %>% 
+  mutate(x=rep(0,8),
+         y=c(300,.3,300,.3,300,.3,300,.3),
+         label=paste('slope =',format(m,digits=2))
+  )
+  
+
+plot_cbd=function(dF,errorvar){
+  if(errorvar=='r2') {
+    errlab='r^2'
+    xlabel=NULL
+    leg=theme(axis.title.x=element_blank(),
+              axis.text.x=element_blank(),
+              axis.ticks.x=element_blank(),
+              strip.text=element_text(face='bold'),
+              strip.background=element_rect(fill=NA,color='black')# plot.margin=unit(c(7,7,0,7),'pt')
+    )
+  } else {
+    errlab='"%"*MAE'
+    xlabel='pixel-wise pattern similarity'
+    leg=theme(strip.background=element_blank(),
+              strip.text=element_blank()
+              # plot.margin=unit(c(-7,7,7,7),'pt')
+    )
+    
+  }
+  errlab=parse(text = paste0(errlab,'~of~prediction'))
+  
+  errorvar1=errorvar
+  mdf1=mdf %>% filter_(~errorvar==errorvar1)
+  dF %>% 
+    ungroup %>% 
+    filter_(~errorvar==errorvar1) %>% 
+  ggplot()+
+    geom_ribbon(aes(x=fscamae,ymin=l,ymax=u), fill='grey90')+
+    geom_path(aes(x=fscamae,y=avg))+
+    geom_text(data=mdf1,aes(x,y,label=label),hjust=0)+
+    facet_grid(~mdlpreds,scales='fixed', labeller=labeller(mdlpreds=tostring))+
+    labs(x=xlabel,
+         y=errlab)+
+    leg
+}
+
+tostring=as_labeller(c('phv'='PHV','phvfsca'='PHV-FSCA','phvaso'='PHV-ASO','phvasofsca'='PHV-ASO-FSCA'))
+g1=plot_cbd(combinedslopedf,'r2')
+g2=plot_cbd(combinedslopedf,'pctmae')
+pg=plot_grid(g1,g2,align='v',ncol=1,nrow=2)
+pg
+save_plot(plot=pg,filename = 'figs/xdate_meanfit.eps',nrow=2, base_width=12)
+
+combinedslopedf %>% 
+  group_by(mdlpreds,errorvar) %>% 
+  summarise(mean(se),
+            min(se),
+            max(se),
+            max(se)-min(se))
+
 
 ```
 
 
-```{r swemae_vs_fscamae}
-snow_stats_otheryrs <- 
-  snow_stats %>% 
-  filter(diffmetric=='mae',
-         simyr!=mdlyr)
+# compare best pred vs lowestfscamae pred
 
-sslm <- 
-  snow_stats_otheryrs %>% 
+```{r compare_bestpred_fscamaepred, eval=T}
+
+combo2predict <- 
+  fscastats %>% 
+  filter(mdlyr!=simyr) %>% 
   group_by(simdte) %>% 
+  summarise(mdldte=mdldte[which.min(mae)]
+  )
+
+mae_pred=left_join(combo2predict,phv) %>% group_by(simdte) %>% nest()
+
+fscamae_stats <- 
+  bind_rows(
+    left_join(combo2predict,phvstats),
+    left_join(combo2predict,phvfscastats),
+    left_join(combo2predict,phvasostats),
+    left_join(combo2predict,phvasofscastats)
+  ) %>% 
+  mutate(from='lowestfscamae')
+
+r2df <- 
+  fscamae_stats %>% 
+  select(-pctmae,-mdlyr,-mdldte) %>% 
+  spread(from,r2) %>% 
+  mutate(errorvar='r2')
+  
+pctmaedf <- 
+  fscamae_stats %>% 
+  select(-r2,-mdlyr,-mdldte) %>% 
+  spread(from,pctmae) %>% 
+  mutate(errorvar='pctmae')
+
+best <- 
+  bind_rows(
+lapply(mylist,function(lst){
+  errorvar=lst[[2]]
+  mdldF=lst[[1]]  
+  unnest_(mdldF,as.name(errorvar),.drop=T) %>% 
+    mutate(from='bestpred')  %>% 
+    spread_('from',errorvar) %>% 
+    mutate(errorvar=errorvar)
+}) 
+) %>% select(-mdldte,-mdlyr)
+
+diff_df <- 
+  full_join(bind_rows(r2df,pctmaedf),best) %>% 
+  mutate(diff=lowestfscamae-bestpred) %>% 
+  gather(var,val,bestpred,lowestfscamae,diff) %>% 
+  mutate(valtype=ifelse(var=='diff','diff','val'))
+```
+
+
+```{r r2compare, results='asis', fig.width=24}
+makeplot_fun=function(mdlpreds,errorvar,valtype,data){
+  mytitle=function(mdlpreds){
+    if(mdlpreds=='phv') myt='PHV'
+    if(mdlpreds=='phvfsca') myt='PHV-FSCA'
+    if(mdlpreds=='phvaso') myt='PHV-ASO'
+    if(mdlpreds=='phvasofsca') myt='PHV-ASO-FSCA'
+    return(myt)
+  }
+    
+  if(valtype=='diff'){
+    if(errorvar=='r2')  {
+      ycoord=coord_cartesian(ylim=c(-0.21,0))
+      # yscale=scale_y_continuous(trans='reverse')
+      ax=theme(axis.line.x=element_blank())
+    }
+    if(errorvar=='pctmae')  {
+      ycoord=coord_cartesian(ylim=c(0,200))
+      ax=theme(axis.line.x=element_line())
+    }
+    
+    data %>% 
+      ggplot()+
+      geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+      ycoord+
+      facet_grid(~simyr,scales='free_x')+
+      labs(x=NULL,
+           y=expression(Delta),
+           title=mytitle(mdlpreds)
+      )+
+      theme(axis.title.x=element_blank(),
+            axis.text.x=element_blank(),
+            axis.ticks.x=element_blank(),
+            strip.text=element_text(face='bold'),
+            strip.background=element_rect(fill=NA,color='black'),
+            plot.title=element_text(face='bold',size=18),
+            plot.margin=unit(c(7,7,0,7),'pt')
+      )+
+      ax
+    
+  } else if(valtype=='val'){
+    if(errorvar=='r2') {
+      errlab='r^2'
+      yscale=scale_y_continuous()
+      ycoord=coord_cartesian(ylim=c(0,1))
+    } else {
+      errlab='"%"*MAE'
+      yscale=scale_y_log10()
+      ycoord=coord_cartesian()#ylim=c(0.01,500))
+}
+    errlab=parse(text = paste0(errlab,'~of~prediction'))
+    
+  data %>% 
+    ggplot()+
+    geom_bar(aes(x=simdte,y=val,fill=var),stat='identity',position='dodge',show_guide=FALSE)+
+    facet_grid(~simyr,scales='free_x')+
+    scale_fill_manual(values=c('blue','red'))+
+    yscale+
+    ycoord+
+    labs(x='Simulation Date',
+         y=errlab,
+         title=''
+    )+
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+                strip.text=element_blank(),
+                strip.background=element_blank(),
+          plot.title=element_text(face='bold',size=18),
+          plot.margin=unit(c(0,7,7,7),'pt')
+    )
+  }
+}
+
+plist <- 
+  diff_df %>% 
+  group_by(mdlpreds,errorvar,valtype) %>% 
   nest() %>% 
-  mutate(mdlobj=map(data,~glm(swe~fsca,data=.)))
+  arrange(errorvar,mdlpreds) %>% 
+  mutate(gg=pmap(list(mdlpreds,errorvar,valtype,data),makeplot_fun))
+gglist=plist$gg
 
-ssr2 <- 
-  sslm %>% 
-  unnest(map(mdlobj,glance)) %>% 
-  select(simdte,mdlobj) %>% 
-  mutate(x=0,
-         # y=1,
-         label=map_chr(mdlobj,bestfit_r2,multiline=TRUE))
+phv_pctmae <- plot_grid(gglist[[2]],
+                        gglist[[1]],
+                        nrow=2,
+                        rel_heights = c(.5,1),
+                        align='v')
+phvaso_pctmae <- plot_grid(gglist[[4]],
+                        gglist[[3]],
+                        nrow=2,
+                        rel_heights = c(.5,1),
+                        align='v')
+phvasofsca_pctmae <- plot_grid(gglist[[6]],
+                        gglist[[5]],
+                        nrow=2,
+                        rel_heights = c(.5,1),
+                        align='v')
+phvfsca_pctmae <- plot_grid(gglist[[8]],
+                        gglist[[7]],
+                        nrow=2,
+                        rel_heights = c(.5,1),
+                        align='v')
+phv_r2 <- plot_grid(gglist[[10]],
+                        gglist[[9]],
+                        nrow=2,
+                        rel_heights = c(.5,1),
+                        align='v')
+phvaso_r2 <- plot_grid(gglist[[12]],
+                        gglist[[11]],
+                        nrow=2,
+                        rel_heights = c(.5,1),
+                        align='v')
+phvasofsca_r2 <- plot_grid(gglist[[14]],
+                        gglist[[13]],
+                        nrow=2,
+                        rel_heights = c(.5,1),
+                        align='v')
+phvfsca_r2 <- plot_grid(gglist[[16]],
+                        gglist[[15]],
+                        nrow=2,
+                        rel_heights = c(.5,1),
+                        align='v')
 
-datamax <- snow_stats_otheryrs %>% 
-  group_by(simdte) %>% 
-  summarise(y=max(swe))
+r2plots <- plot_grid(phv_r2,phvfsca_r2,phvaso_r2,phvasofsca_r2,nrow=1,ncol=4)
+pctmaeplots <- plot_grid(phv_pctmae,phvfsca_pctmae,phvaso_pctmae,phvasofsca_pctmae,nrow=1,ncol=4)
+allplots <- plot_grid(r2plots,pctmaeplots,nrow=2,ncol=1,labels='auto',label_size=36)
+allplots
+save_plot(allplots,filename='figs/xdate_prederr_comparison.eps',
+          nrow=4,
+          ncol=4,
+          base_width=8)
 
-ssr2 <- 
-  left_join(ssr2,datamax,by='simdte')
 
-ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
-  geom_point()+
-  geom_smooth(method='lm')+
-  geom_text(data=ssr2,aes(x,y,label=label),parse=TRUE,hjust=0,vjust=1)+
-  facet_wrap(~simdte,scales='free')
+
+diff_df %>%
+  filter(valtype=='diff',errorvar=='r2') %>% 
+  group_by(mdlpreds,var) %>% 
+  summarise(mean(val),
+            sd(val)) %>% 
+  kable(digits=2,
+        caption='summary stats for differences between r2 of bestpreds and lowestfscamae pred')
+
+diff_df %>% 
+  filter(valtype=='val',errorvar=='r2') %>% 
+  group_by(errorvar,mdlpreds,var) %>% 
+  summarise(mean(val,na.rm=T),
+            sd(val,na.rm=T)) %>% 
+  kable(digits=2,
+        caption='summary stats of r2 for different modeltypes')
 
 ```
 
-## swe and fsca difference for best predictions
+
+```{r pctmaecompare, results='asis', fig.height=6}
+  
+diff_df %>%
+  filter(valtype=='diff',errorvar=='pctmae') %>% 
+  group_by(mdlpreds,var) %>% 
+  summarise(mean(val),
+            sd(val)) %>% 
+  kable(digits=2,
+        caption='summary stats for differences between pctmae of bestpreds and lowestfscamae pred')
+
+diff_df %>% 
+  filter(valtype=='val',errorvar=='pctmae') %>% 
+  group_by(errorvar,mdlpreds,var) %>% 
+  summarise(mean(val,na.rm=T),
+            sd(val,na.rm=T)) %>% 
+  kable(digits=2,
+        caption='summary stats for pctmae different modeltypes')
+
+#   ggplot()+
+#     geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+#     coord_cartesian(ylim=c(0,-200))
+```
+
+
+
+# swe and fsca difference for best predictions
 
 More yellow means prediction was better. x and y axis represent the differences between simulation date and model date expressed as mean squared error or mean absolute error.
 
+Again not that useful to look at because prediction error is lowest when fscamae is highest (due to more snow cover earlier in season). Not immediately intuitive until you look at fscamae vs date.
 
-```{r}
+```{r eval=F}
 pltdata <-
   bind_rows(
     lapply(mylist,FUN=function(lst){
@@ -776,8 +1240,7 @@ plot_grid(plotlist = tt, align='hv',ncol=4, labels=paste0('(',seq_len(length(tt)
 
 ```
 
-```{r table_fscadiff-snowdiff,results='asis'}
-
+```{r table_fscadiff-snowdiff,results='asis', eval=F}
 bestfitlines <-
   pltdata %>%
   split(list(.$mdlpreds,.$diffmetric,.$prederrorvar)) %>%
@@ -796,8 +1259,5 @@ stargazer(bestfitlines,
           report=c('vc*'),
           no.space=F,
           out='output/table_snowmetrics-fscametrics-prederror.html')
-
-
-
 
 ```
