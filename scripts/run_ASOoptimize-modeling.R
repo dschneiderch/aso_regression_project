@@ -83,51 +83,54 @@ cl <- NULL
 cl <- parallel::makeCluster(num_cores,type='FORK')
 
 nsamples=c(50,100,500,1000)
-nsamp=nsamples[1]
-plusallphvmdls=data_frame()
-for(nsamp in nsamples){
-optdata <-
-  alldata %>%
-  # filter(dte==unique(dte)[1:3]) %>%
-  mutate(dte2=dte) %>%
-  group_by(dte2) %>%
-  nest() %>%
-  mutate(straps=map(data,crossv_mc,20,test=.2)) %>%
-  unnest(straps) %>%
-  mutate(trainopt=map2(train,.id,function(x,.id) {
-    xdf=as.data.frame(x) %>% mutate(.id)
-    # print(fr*nr)
-    list(replicate(20,sample_n(xdf,nsamp),simplify=FALSE))
-      } %>% flatten
-    ))
+# nsamp=nsamples[1]
+# plusallphvmdls=data_frame()
+# for(nsamp in nsamples){
+# optdata <-
+#   alldata %>%
+#   # filter(dte==unique(dte)[1:3]) %>%
+#   mutate(dte2=dte) %>%
+#   group_by(dte2) %>%
+#   nest() %>%
+#   mutate(straps=map(data,crossv_mc,20,test=.2)) %>%
+#   unnest(straps) %>%
+#   mutate(trainopt=map2(train,.id,function(x,.id) {
+#     xdf=as.data.frame(x) %>% mutate(.id)
+#     # print(fr*nr)
+#     list(replicate(20,sample_n(xdf,nsamp),simplify=FALSE))
+#       } %>% flatten
+#     ))
+#
+#   allphvmdls <-
+#     map_df(optdata$trainopt,unlist,rec=F) %>% dplyr::select(dte,.id,everything()) %>%
+#     left_join(optdata %>% select(dte2,.id),by=c('dte'='dte2','.id')) %>%
+#     group_by(dte,.id) %>%
+#     nest(.key='train') %>%
+#     left_join(optdata %>% select(dte2,.id,test),by=c('dte'='dte2','.id')) %>%
+#   mutate(
+#     phv_obj_glmmdl=map(train,gnet_phv,cl=cl),
+#     phv_aug_glmmdl=map2(phv_obj_glmmdl,test,augmentEnet),
+#     phv_coef_glmmdl=map(phv_obj_glmmdl,coef),
+#     #
+#     phvfsca_obj_glmmdl=map(train,gnet_phvfsca,cl),
+#     phvfsca_aug_glmmdl=map2(phvfsca_obj_glmmdl,test,augmentEnet),
+#     phvfsca_coef_glmmdl=map(phvfsca_obj_glmmdl,coef),
+#     #
+#     nsamp
+#   )
+#
+#   plusallphvmdls <- bind_rows(plusallphvmdls,allphvmdls)
+#   print(nsamp)
+# }
+# rm(allphvmdls)
+# print('phv models finished.')
+#
+# saveRDS(alldata,paste0(pathout,'alldata_',ires,'.rds'))
+# saveRDS(plusallphvmdls %>% select(-contains('coef'),-contains('obj')), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
+# saveRDS(plusallphvmdls %>% select(-contains('aug'),-contains('obj')), paste0(pathout,'phvmdls_coef_',ires,'.rds'))
 
-  allphvmdls <-
-    map_df(optdata$trainopt,unlist,rec=F) %>% dplyr::select(dte,.id,everything()) %>%
-    left_join(optdata %>% select(dte2,.id),by=c('dte'='dte2','.id')) %>%
-    group_by(dte,.id) %>%
-    nest(.key='train') %>%
-    left_join(optdata %>% select(dte2,.id,test),by=c('dte'='dte2','.id')) %>%
-  mutate(
-    phv_obj_glmmdl=map(train,gnet_phv,cl=cl),
-    phv_aug_glmmdl=map2(phv_obj_glmmdl,test,augmentEnet),
-    phv_coef_glmmdl=map(phv_obj_glmmdl,coef),
-    #
-    phvfsca_obj_glmmdl=map(train,gnet_phvfsca,cl),
-    phvfsca_aug_glmmdl=map2(phvfsca_obj_glmmdl,test,augmentEnet),
-    phvfsca_coef_glmmdl=map(phvfsca_obj_glmmdl,coef),
-    #
-    nsamp
-  )
-
-  plusallphvmdls <- bind_rows(plusallphvmdls,allphvmdls)
-  print(nsamp)
-}
-
-print('phv models finished.')
-
-saveRDS(alldata,paste0(pathout,'alldata_',ires,'.rds'))
-saveRDS(plusallphvmdls %>% select(-contains('coef'),-contains('obj')), paste0(pathout,'phvmdls_augment_',ires,'.rds'))
-saveRDS(plusallphvmdls %>% select(-contains('aug'),-contains('obj')), paste0(pathout,'phvmdls_coef_',ires,'.rds'))
+alldata <- readRDS(paste0(pathout,'alldata_',ires,'.rds'))
+plusallphvmdls <- readRDS(paste0(pathout,'phvmdls_augment_',ires,'.rds'))
 
 #asoswe=asoswe %>% filter(asodte %in% unique(asodte)[5:6])
 # allphvmdls <- allphvmdls %>% filter(.id=='01'|.id=='02')
@@ -136,10 +139,11 @@ saveRDS(plusallphvmdls %>% select(-contains('aug'),-contains('obj')), paste0(pat
 allmdldata <- plusallphvmdls %>%
   select(dte,.id,nsamp,train,test) %>%
   mutate(yr=substr(dte,1,4))# %>% filter(dte==unique(dte)[1:2])
-rm(allphvmdls)
+rm(plusallphvmdls)
 
 iyr=2013
 for(iyr in unique(allmdldata$yr)){
+if(iyr==2013) next
 print(iyr)
   allasomdls <-
     allmdldata %>%
