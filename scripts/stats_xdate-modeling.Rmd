@@ -4,7 +4,6 @@ author: "Dominik Schneider"
 output:
   html_document:
     fig_height: 12
-    fig_width: 12
     self_contained: true
     toc: yes
 ---
