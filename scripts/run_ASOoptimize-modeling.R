@@ -82,7 +82,7 @@ num_cores <- parallel::detectCores() - 1
 cl <- NULL
 cl <- parallel::makeCluster(num_cores,type='FORK')
 
-nsamples=c(30,50,100,500,1000)
+nsamples=c(50,100,500,1000)
 nsamp=nsamples[1]
 plusallphvmdls=data_frame()
 for(nsamp in nsamples){
@@ -140,7 +140,7 @@ rm(allphvmdls)
 
 iyr=2013
 for(iyr in unique(allmdldata$yr)){
-
+print(iyr)
   allasomdls <-
     allmdldata %>%
     filter_(~yr==iyr) %>%
@@ -154,7 +154,7 @@ for(iyr in unique(allmdldata$yr)){
   # if(!identical(allasomdls[[5]],allasomdls[[7]])) stop()
 
   print('phvaso models finished.')
-
+print(pryr::mem_used())
   allasomdls <-
     allasomdls[!duplicated(as.list(allasomdls))] %>%
     mutate(
@@ -163,7 +163,7 @@ for(iyr in unique(allmdldata$yr)){
       phvasofsca_aug_glmmdl=pmap(list(phvasofsca_obj_glmmdl,test,asodte),augmentEnet,asoswe),
       phvasofsca_coef_glmmdl=map(phvasofsca_obj_glmmdl,coef)
     )
-
+print(pryr::mem_used())
   parallel::stopCluster(cl); cl=NULL
 
   saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvaso_aug_glmmdl), paste0(pathout,'phvasomdls_augment_',iyr,'_',ires,'.rds'))
