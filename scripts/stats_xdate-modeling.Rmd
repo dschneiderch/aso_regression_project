@@ -4,6 +4,7 @@ author: "Dominik Schneider"
 output:
   html_document:
     fig_height: 12
+    fig_width: 16
     self_contained: true
     toc: yes
 ---
@@ -118,7 +119,7 @@ statheatmap=function(dF,metricvar){
 }
 
 statboxplots=function(dF,metricvar){
- 
+
 ggplot(dF)+
   geom_boxplot(aes_(x=~simdte,y=as.name(metricvar),fill=~mdlpreds),outlier.size=.5)+
   facet_wrap(~simyr, scales='free', as.table=TRUE)+
@@ -140,17 +141,17 @@ bestphvaso <- best_stats(phvasostats) %>% mutate(mdlpreds='phvaso')
 phvasofscastats <- generate_stats(phvasofsca) %>% mutate(mdlpreds='phvasofsca')
 bestphvasofsca <- best_stats(phvasofscastats) %>% mutate(mdlpreds='phvasofsca')
 #
-allbeststats <- bind_rows(bestphv,bestphvfsca,bestphvaso,bestphvasofsca) %>% 
+allbeststats <- bind_rows(bestphv,bestphvfsca,bestphvaso,bestphvasofsca) %>%
   mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
-allstats <- bind_rows(phvstats,phvfscastats,phvasostats,phvasofscastats) %>% 
+allstats <- bind_rows(phvstats,phvfscastats,phvasostats,phvasofscastats) %>%
   mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
 
-unnest(allbeststats,r2) %>% 
-  select(simdte,mdlpreds,r2) %>% 
-  group_by(mdlpreds) %>% 
+unnest(allbeststats,r2) %>%
+  select(simdte,mdlpreds,r2) %>%
+  group_by(mdlpreds) %>%
   summarise(mean(r2),
             median(r2),
-            sd(r2)) %>% 
+            sd(r2)) %>%
   kable(.,digits=2,
         caption='summary of best predictions')
 
@@ -198,15 +199,15 @@ statheatmap(phvasofscastats,'r2')+
 ## all model boxplots
 
 ```{r}
-allstats %>% 
-  filter(simyr!=mdlyr) %>% 
+allstats %>%
+  filter(simyr!=mdlyr) %>%
 statboxplots('r2')+
   scale_fill_brewer(palette='Paired')+
   coord_cartesian(ylim=c(0,1))+
   geom_point(data=unnest(allbeststats,r2),aes(simdte,r2,fill=mdlpreds),shape=23,color='red',position=position_jitterdodge(),size=2,show.legend=F)+
   theme(legend.justification=c(0,0),
               legend.position=c(0,0.6))
-  
+
 ```
 
 
@@ -214,12 +215,12 @@ statboxplots('r2')+
 # % MAE
 
 ```{r results='asis'}
-unnest(allbeststats,pctmae) %>% 
-  select(simdte,mdlpreds,pctmae) %>% 
-  group_by(mdlpreds) %>% 
+unnest(allbeststats,pctmae) %>%
+  select(simdte,mdlpreds,pctmae) %>%
+  group_by(mdlpreds) %>%
   summarise(mean(pctmae),
             median(pctmae),
-            sd(pctmae)) %>% 
+            sd(pctmae)) %>%
   kable(.,digits=2,
         caption='summary of best predictions')
 ```
@@ -263,8 +264,8 @@ statheatmap(phvasofscastats,'pctmae')+
 ## all model boxplots
 
 ```{r}
-allstats %>% 
-  filter(simyr!=mdlyr) %>% 
+allstats %>%
+  filter(simyr!=mdlyr) %>%
 statboxplots('pctmae')+
   scale_fill_brewer(palette='Paired')+
   coord_cartesian(ylim=c(0,300))+
@@ -352,30 +353,30 @@ snow_stats=bind_rows(mse_stats,mae_stats)
 ## with mean absolute error
 
 ```{r swemae_vs_fscamae}
-snow_stats_otheryrs <- 
-  snow_stats %>% 
+snow_stats_otheryrs <-
+  snow_stats %>%
   filter(diffmetric=='mae',
          simyr!=mdlyr)
 
-sslm <- 
-  snow_stats_otheryrs %>% 
-  group_by(simdte) %>% 
-  nest() %>% 
+sslm <-
+  snow_stats_otheryrs %>%
+  group_by(simdte) %>%
+  nest() %>%
   mutate(mdlobj=map(data,~glm(swe~fsca,data=.)))
 
-ssr2 <- 
-  sslm %>% 
-  unnest(map(mdlobj,glance)) %>% 
-  select(simdte,mdlobj) %>% 
+ssr2 <-
+  sslm %>%
+  unnest(map(mdlobj,glance)) %>%
+  select(simdte,mdlobj) %>%
   mutate(x=0,
          # y=1,
          label=map_chr(mdlobj,bestfit_r2,multiline=TRUE))
 
-datamax <- snow_stats_otheryrs %>% 
-  group_by(simdte) %>% 
+datamax <- snow_stats_otheryrs %>%
+  group_by(simdte) %>%
   summarise(y=max(swe))
 
-ssr2 <- 
+ssr2 <-
   left_join(ssr2,datamax,by='simdte')
 
 ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
@@ -391,30 +392,30 @@ ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
 more dates are statistically significant with mae so we'll stick with that.
 
 ```{r swemse_vs_fscamse, eval=F}
-snow_stats_otheryrs <- 
-  snow_stats %>% 
+snow_stats_otheryrs <-
+  snow_stats %>%
   filter(diffmetric=='mse',
          simyr!=mdlyr)
 
-sslm <- 
-  snow_stats_otheryrs %>% 
-  group_by(simdte) %>% 
-  nest() %>% 
+sslm <-
+  snow_stats_otheryrs %>%
+  group_by(simdte) %>%
+  nest() %>%
   mutate(mdlobj=map(data,~glm(swe~fsca,data=.)))
 
-ssr2 <- 
-  sslm %>% 
-  unnest(map(mdlobj,glance)) %>% 
-  select(simdte,mdlobj) %>% 
+ssr2 <-
+  sslm %>%
+  unnest(map(mdlobj,glance)) %>%
+  select(simdte,mdlobj) %>%
   mutate(x=0,
          # y=1,
          label=map_chr(mdlobj,bestfit_r2,multiline=TRUE))
 
-datamax <- snow_stats_otheryrs %>% 
-  group_by(simdte) %>% 
+datamax <- snow_stats_otheryrs %>%
+  group_by(simdte) %>%
   summarise(y=max(swe))
 
-ssr2 <- 
+ssr2 <-
   left_join(ssr2,datamax,by='simdte')
 
 ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
@@ -607,14 +608,14 @@ myplots_all <-
     g <- plot_error_snow(dF,errorvar)+
             facet_wrap(~dte,scales='free')+
             coord_cartesian(xlim=c(0,125))
-    if(errorvar=='pctmae') g <- g + coord_cartesian(xlim=c(0,125),ylim=c(0,200)) + theme(legend.position=c(.96,.12))      
+    if(errorvar=='pctmae') g <- g + coord_cartesian(xlim=c(0,125),ylim=c(0,200)) + theme(legend.position=c(.96,.12))
     return(g)
     })
 
 # plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
 # plot_grid(plotlist=myplots_all[7:8],ncol=2,align='hv')
 
-pg_snow <- 
+pg_snow <-
   plot_grid(plotlist=myplots_all,
             ncol=2,
             align='hv',
@@ -692,10 +693,10 @@ fscadata2plot <-
     alldF <-
       unnest_(mdldF,as.name(errorvar),.drop=T) %>%
       left_join(fscastats) %>%
-      gather(fscametricvar,fscametricval,mae,mse) %>% 
+      gather(fscametricvar,fscametricval,mae,mse) %>%
         filter(simyr!=mdlyr)
     return(list(alldF,errorvar))
-  }) 
+  })
 
 myplots <-
   lapply(fscadata2plot,FUN=function(lst){
@@ -767,10 +768,10 @@ fscadata2plot_all <-
     alldF <-
       mdldF %>%
       left_join(fscastats) %>%
-      gather(fscametricvar,fscametricval,mae,mse) %>% 
-        filter(simyr!=mdlyr)      
+      gather(fscametricvar,fscametricval,mae,mse) %>%
+        filter(simyr!=mdlyr)
     return(list(alldF,errorvar))
-  }) 
+  })
 
 
 myplots_all <-
@@ -797,17 +798,17 @@ see "figs/so_many_fscaplots.pdf" for all plots
 
 ```{r table_slopes, results='asis', fig.width=24,out.width='\\textwidth'}
 
-slopedf <- 
+slopedf <-
   bind_rows(
     lapply(fscadata2plot_all,function(lst){
       dF=lst[[1]]
       errorvar=lst[[2]]
       myform=as.formula(paste(errorvar,'~fscametricval'))
-      newlist <- 
+      newlist <-
         dF %>%
-        filter(fscametricvar=='mae') %>% 
-        split(.$simdte) %>% 
-        map(~lm(myform,data=.)) %>% 
+        filter(fscametricvar=='mae') %>%
+        split(.$simdte) %>%
+        map(~lm(myform,data=.)) %>%
         map(tidy)
       bind_rows(newlist) %>% mutate(simdte=rep(names(newlist),each=2),
                                     errorvar,
@@ -815,38 +816,38 @@ slopedf <-
     })
   )
 
-r2slopes <- 
-  slopedf %>% 
-  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>% 
-  filter(term!='(Intercept)',errorvar=='r2') %>% 
+r2slopes <-
+  slopedf %>%
+  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>%
+  filter(term!='(Intercept)',errorvar=='r2') %>%
   spread(errorvar,estimate)
 
-r2slp <- 
-  r2slopes %>% 
-  select(simdte,mdlpreds,r2,p.value) %>% 
-  rename(slope=r2) %>% 
+r2slp <-
+  r2slopes %>%
+  select(simdte,mdlpreds,r2,p.value) %>%
+  rename(slope=r2) %>%
   mutate(slope=ifelse(p.value<=0.05,sprintf(fmt='%.02f',slope),'-'),
          mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')),
-         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>% 
-  select(-p.value) %>% 
+         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>%
+  select(-p.value) %>%
   spread(mdlpreds,slope) %>%
   mutate(sep='| ')
 
 
-pctmaeslopes <- 
-  slopedf %>% 
-  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>% 
-  filter(term!='(Intercept)',errorvar=='pctmae') %>% 
+pctmaeslopes <-
+  slopedf %>%
+  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>%
+  filter(term!='(Intercept)',errorvar=='pctmae') %>%
   spread(errorvar,estimate)
 
-pctmslp <- 
-  pctmaeslopes %>% 
-  select(simdte,mdlpreds,pctmae,p.value) %>% 
-  rename(slope=pctmae) %>% 
+pctmslp <-
+  pctmaeslopes %>%
+  select(simdte,mdlpreds,pctmae,p.value) %>%
+  rename(slope=pctmae) %>%
   mutate(slope=ifelse(p.value<=0.05,sprintf(fmt='%.02f',slope),'-'),
          mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')),
-         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>% 
-  select(-p.value) %>% 
+         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>%
+  select(-p.value) %>%
   spread(mdlpreds,slope)
 
 
@@ -862,19 +863,42 @@ stargazer(bind_cols(r2slp,pctmslp),
 ## combine pred error best fit lines by mdlpreds, plot mean +/- se
 
 ```{r plot_combinedslopes, fig.height=12}
+
+## --- to look at the regression of all the data at once ----
+
+# stats_with_fscastats <- bind_rows(phvstats,phvfscastats,phvasostats,phvasofscastats) %>% left_join(fscastats %>% select(-mse))
+#
+# tt <- stats_with_fscastats %>%
+#   gather(errorvar,errorval,r2,pctmae)
+#
+# tt %>%
+#   ggplot(aes(x=mae,y=errorval))+
+#   geom_point(alpha=0.8)+
+#   geom_smooth(method='lm',se=T)+
+#   facet_grid(errorvar~mdlpreds,scales='free')
+#
+# tt %>%
+#   group_by(mdlpreds,errorvar) %>%
+#   nest() %>%
+#   mutate(obj=map(data,~lm(errorval~mae,data=.)),
+#          gl=map(obj,glance),
+#          td=map(obj,tidy)) %>%
+#   unnest(td,.drop=T) %>% View
+
+## fit bestline trhough each date separately to create ensemble. plot mean and se below
 lst=fscadata2plot_all[[1]]
-slopedf <- 
+slopedf <-
   bind_rows(
     lapply(fscadata2plot_all,function(lst){
       dF=lst[[1]]
       errorvar=lst[[2]]
       myform=as.formula(paste(errorvar,'~fscametricval'))
-      newlist <- 
+      newlist <-
         dF %>%
-        filter(fscametricvar=='mae') %>% 
-        split(.$simdte) %>% 
-        map(~lm(myform,data=.)) %>% 
-        map(function(obj) { 
+        filter(fscametricvar=='mae') %>%
+        split(.$simdte) %>%
+        map(~lm(myform,data=.)) %>%
+        map(function(obj) {
           newdata=data.frame(fscametricval=seq(0,1,.01))
           if(glance(obj)$p.value<=0.05){
             data_frame(fscamae=seq(0,1,0.01),
@@ -885,35 +909,56 @@ slopedf <-
                        pred=mean(obj$model[,1]))
             }
             })
-      
-      bind_rows(newlist,.id='simdte') %>% 
+
+      bind_rows(newlist,.id='simdte') %>%
         mutate(errorvar,
                mdlpreds=unique(dF$mdlpreds))
     })
   )
 
+tt=slopedf %>% 
+  group_by(mdlpreds,errorvar,simdte) %>% 
+  nest() %>% 
+  mutate(obj=map(data,~lm(pred~fscamae,data=.)),
+         tdy=map(obj,tidy),
+         slope=map(tdy,function(x) x %>% select(term,estimate,p.value) %>% filter(term=='fscamae'))
+  ) %>% 
+  unnest(slope,.drop=T)
 
 
-combinedslopedf <- 
-  slopedf %>% 
-  group_by(mdlpreds,errorvar,fscamae) %>% 
+# differences in slope between fsca models are not statistically different
+print(
+  tt %>% 
+  filter(mdlpreds=='phvasofsca' | mdlpreds=='phvfsca') %>% 
+  spread(mdlpreds,estimate) %>% 
+  split(.$errorvar) %>% 
+  map(function(x) t.test(x$phvfsca,x$phvasofsca))
+)
+
+combinedslope_stats <- 
+  tt %>% 
+  split(list(.$mdlpreds,.$errorvar)) %>% 
+  map_df(function(x) tidy(t.test(x$estimate)),.id='facet') %>% separate(facet,into=c('mdlpreds','errorvar'))
+      
+mdf <-
+  combinedslope_stats %>% 
+  select(mdlpreds,errorvar,m=estimate,p.value) %>% 
+  arrange(mdlpreds,errorvar) %>% 
+  ungroup %>%
+  mutate(x=0,
+         y=c(300,0,300,0,300,0,300,0),
+         label=paste('slope =',sprintf(fmt='%.2f',m),'\np = ',sprintf(fmt='%.2f',p.value))
+  )
+mdf
+
+combinedslopedf <-
+  slopedf %>%
+  group_by(mdlpreds,errorvar,fscamae) %>%
   summarise(avg=mean(pred),
             se=sd(pred)/sqrt(n()),
             u=avg+se,
             l=avg-se)
 
-mdf <- 
-  combinedslopedf %>% 
-  group_by(mdlpreds,errorvar) %>% 
-  summarise(
-            m=diff(range(avg))
-  ) %>% 
-  ungroup %>% 
-  mutate(x=rep(0,8),
-         y=c(300,.3,300,.3,300,.3,300,.3),
-         label=paste('slope =',format(m,digits=2))
-  )
-  
 
 plot_cbd=function(dF,errorvar){
   if(errorvar=='r2') {
@@ -932,19 +977,23 @@ plot_cbd=function(dF,errorvar){
               strip.text=element_blank()
               # plot.margin=unit(c(-7,7,7,7),'pt')
     )
-    
+
   }
   errlab=parse(text = paste0(errlab,'~of~prediction'))
-  
+
   errorvar1=errorvar
   mdf1=mdf %>% filter_(~errorvar==errorvar1)
-  dF %>% 
-    ungroup %>% 
-    filter_(~errorvar==errorvar1) %>% 
+  slopedf1=slopedf %>% filter_(~errorvar==errorvar1,~pred<500)
+  dF_grp <-
+    dF %>%
+    ungroup %>%
+    filter_(~errorvar==errorvar1)
+
   ggplot()+
-    geom_ribbon(aes(x=fscamae,ymin=l,ymax=u), fill='grey90')+
-    geom_path(aes(x=fscamae,y=avg))+
-    geom_text(data=mdf1,aes(x,y,label=label),hjust=0)+
+    geom_line(data=slopedf1,aes(x=fscamae,y=pred,group=simdte),color='grey90')+
+    geom_ribbon(data=dF_grp,aes(x=fscamae,ymin=l,ymax=u), fill='grey10',alpha=0.5)+
+    geom_path(data=dF_grp,aes(x=fscamae,y=avg),size=1.5,color='blue')+
+    geom_text(data=mdf1,aes(x,y,label=label),hjust=0,vjust=0)+
     facet_grid(~mdlpreds,scales='fixed', labeller=labeller(mdlpreds=tostring))+
     labs(x=xlabel,
          y=errlab)+
@@ -958,8 +1007,8 @@ pg=plot_grid(g1,g2,align='v',ncol=1,nrow=2)
 pg
 save_plot(plot=pg,filename = 'figs/xdate_meanfit.eps',nrow=2, base_width=12)
 
-combinedslopedf %>% 
-  group_by(mdlpreds,errorvar) %>% 
+combinedslopedf %>%
+  group_by(mdlpreds,errorvar) %>%
   summarise(mean(se),
             min(se),
             max(se),
@@ -973,52 +1022,52 @@ combinedslopedf %>%
 
 ```{r compare_bestpred_fscamaepred, eval=T}
 
-combo2predict <- 
-  fscastats %>% 
-  filter(mdlyr!=simyr) %>% 
-  group_by(simdte) %>% 
+combo2predict <-
+  fscastats %>%
+  filter(mdlyr!=simyr) %>%
+  group_by(simdte) %>%
   summarise(mdldte=mdldte[which.min(mae)]
   )
 
 mae_pred=left_join(combo2predict,phv) %>% group_by(simdte) %>% nest()
 
-fscamae_stats <- 
+fscamae_stats <-
   bind_rows(
     left_join(combo2predict,phvstats),
     left_join(combo2predict,phvfscastats),
     left_join(combo2predict,phvasostats),
     left_join(combo2predict,phvasofscastats)
-  ) %>% 
+  ) %>%
   mutate(from='lowestfscamae')
 
-r2df <- 
-  fscamae_stats %>% 
-  select(-pctmae,-mdlyr,-mdldte) %>% 
-  spread(from,r2) %>% 
+r2df <-
+  fscamae_stats %>%
+  select(-pctmae,-mdlyr,-mdldte) %>%
+  spread(from,r2) %>%
   mutate(errorvar='r2')
-  
-pctmaedf <- 
-  fscamae_stats %>% 
-  select(-r2,-mdlyr,-mdldte) %>% 
-  spread(from,pctmae) %>% 
+
+pctmaedf <-
+  fscamae_stats %>%
+  select(-r2,-mdlyr,-mdldte) %>%
+  spread(from,pctmae) %>%
   mutate(errorvar='pctmae')
 
-best <- 
+best <-
   bind_rows(
 lapply(mylist,function(lst){
   errorvar=lst[[2]]
-  mdldF=lst[[1]]  
-  unnest_(mdldF,as.name(errorvar),.drop=T) %>% 
-    mutate(from='bestpred')  %>% 
-    spread_('from',errorvar) %>% 
+  mdldF=lst[[1]]
+  unnest_(mdldF,as.name(errorvar),.drop=T) %>%
+    mutate(from='bestpred')  %>%
+    spread_('from',errorvar) %>%
     mutate(errorvar=errorvar)
-}) 
+})
 ) %>% select(-mdldte,-mdlyr)
 
-diff_df <- 
-  full_join(bind_rows(r2df,pctmaedf),best) %>% 
-  mutate(diff=lowestfscamae-bestpred) %>% 
-  gather(var,val,bestpred,lowestfscamae,diff) %>% 
+diff_df <-
+  full_join(bind_rows(r2df,pctmaedf),best) %>%
+  mutate(diff=lowestfscamae-bestpred) %>%
+  gather(var,val,bestpred,lowestfscamae,diff) %>%
   mutate(valtype=ifelse(var=='diff','diff','val'))
 ```
 
@@ -1032,142 +1081,227 @@ makeplot_fun=function(mdlpreds,errorvar,valtype,data){
     if(mdlpreds=='phvasofsca') myt='PHV-ASO-FSCA'
     return(myt)
   }
-    
+  yesGuide=FALSE
+
   if(valtype=='diff'){
     if(errorvar=='r2')  {
       ycoord=coord_cartesian(ylim=c(-0.21,0))
       # yscale=scale_y_continuous(trans='reverse')
-      ax=theme(axis.line.x=element_blank())
+      ax=theme(axis.line.x=element_line())#element_blank())
     }
     if(errorvar=='pctmae')  {
       ycoord=coord_cartesian(ylim=c(0,200))
       ax=theme(axis.line.x=element_line())
     }
-    
-    data %>% 
+
+    data %>%
       ggplot()+
-      geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+      geom_point(aes(x=simdte,y=val))+
       ycoord+
       facet_grid(~simyr,scales='free_x')+
-      labs(x=NULL,
+      labs(x='Simulation Date',
            y=expression(Delta),
-           title=mytitle(mdlpreds)
+           title=''
       )+
-      theme(axis.title.x=element_blank(),
-            axis.text.x=element_blank(),
-            axis.ticks.x=element_blank(),
-            strip.text=element_text(face='bold'),
-            strip.background=element_rect(fill=NA,color='black'),
-            plot.title=element_text(face='bold',size=18),
-            plot.margin=unit(c(7,7,0,7),'pt')
+      theme(axis.title.x=element_text(),
+            axis.text.x=element_text(angle=45,hjust=1),
+            strip.text=element_blank(),
+            strip.background=element_blank(),
+            plot.title=element_blank(),
+            panel.background=element_rect(),
+            panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+            plot.margin=unit(c(0,7,7,7),'pt')
       )+
       ax
-    
+
   } else if(valtype=='val'){
     if(errorvar=='r2') {
+      if(mdlpreds=='phv') yesGuide=TRUE
       errlab='r^2'
       yscale=scale_y_continuous()
       ycoord=coord_cartesian(ylim=c(0,1))
     } else {
       errlab='"%"*MAE'
-      yscale=scale_y_log10()
+      yscale=scale_y_log10(breaks=c(1,10,100),labels=c(1,10,100))
       ycoord=coord_cartesian()#ylim=c(0.01,500))
 }
     errlab=parse(text = paste0(errlab,'~of~prediction'))
-    
-  data %>% 
+
+  data %>%
     ggplot()+
-    geom_bar(aes(x=simdte,y=val,fill=var),stat='identity',position='dodge',show_guide=FALSE)+
+    geom_point(aes(x=simdte,y=val,colour=var,size=var),show.legend=yesGuide)+
+    guides(size='none',colour=guide_legend(''))+
     facet_grid(~simyr,scales='free_x')+
-    scale_fill_manual(values=c('blue','red'))+
+    scale_size_manual(values=c(1.2,1))+
+    scale_colour_manual(values=c('blue','red'),labels=c('Best Prediction','Lowest FSCA MAE Prediction'))+
     yscale+
     ycoord+
-    labs(x='Simulation Date',
+    labs(x='',
          y=errlab,
-         title=''
+         title=mytitle(mdlpreds)
     )+
-    theme(axis.text.x=element_text(angle=45,hjust=1),
-                strip.text=element_blank(),
-                strip.background=element_blank(),
+    theme(axis.text.x=element_blank(),
+          axis.ticks.x=element_blank(),
+          strip.text=element_text(face='bold'),
+          strip.background=element_rect(fill=NA,color='black'),
+          panel.background=element_rect(),
+          panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=0.5),
           plot.title=element_text(face='bold',size=18),
-          plot.margin=unit(c(0,7,7,7),'pt')
+          plot.margin=unit(c(7,7,0,7),'pt'),
+          legend.justification = c(0,1),
+          legend.position = c(0.02,0.995),
+          legend.background = element_rect(fill='white')
     )
   }
 }
 
-plist <- 
-  diff_df %>% 
-  group_by(mdlpreds,errorvar,valtype) %>% 
-  nest() %>% 
-  arrange(errorvar,mdlpreds) %>% 
+plist <-
+  diff_df %>%
+  group_by(mdlpreds,errorvar,valtype) %>%
+  nest() %>%
+  arrange(errorvar,mdlpreds) %>%
   mutate(gg=pmap(list(mdlpreds,errorvar,valtype,data),makeplot_fun))
 gglist=plist$gg
 
-phv_pctmae <- plot_grid(gglist[[2]],
-                        gglist[[1]],
+phv_pctmae <- plot_grid(gglist[[1]],
+                        gglist[[2]],
                         nrow=2,
-                        rel_heights = c(.5,1),
+                        rel_heights = c(1,.4),
                         align='v')
-phvaso_pctmae <- plot_grid(gglist[[4]],
-                        gglist[[3]],
+phvaso_pctmae <- plot_grid(gglist[[3]],
+                        gglist[[4]],
                         nrow=2,
-                        rel_heights = c(.5,1),
+                        rel_heights = c(1,.4),
                         align='v')
-phvasofsca_pctmae <- plot_grid(gglist[[6]],
-                        gglist[[5]],
+phvasofsca_pctmae <- plot_grid(gglist[[5]],
+                        gglist[[6]],
                         nrow=2,
-                        rel_heights = c(.5,1),
+                        rel_heights = c(1,.4),
                         align='v')
-phvfsca_pctmae <- plot_grid(gglist[[8]],
-                        gglist[[7]],
+phvfsca_pctmae <- plot_grid(gglist[[7]],
+                        gglist[[8]],
                         nrow=2,
-                        rel_heights = c(.5,1),
+                        rel_heights = c(1,.4),
                         align='v')
-phv_r2 <- plot_grid(gglist[[10]],
-                        gglist[[9]],
+phv_r2 <- plot_grid(gglist[[9]],
+                        gglist[[10]],
                         nrow=2,
-                        rel_heights = c(.5,1),
+                        rel_heights = c(1,.4),
                         align='v')
-phvaso_r2 <- plot_grid(gglist[[12]],
-                        gglist[[11]],
+phvaso_r2 <- plot_grid(gglist[[11]],
+                        gglist[[12]],
                         nrow=2,
-                        rel_heights = c(.5,1),
+                        rel_heights = c(1,.4),
                         align='v')
-phvasofsca_r2 <- plot_grid(gglist[[14]],
-                        gglist[[13]],
+phvasofsca_r2 <- plot_grid(gglist[[13]],
+                        gglist[[14]],
                         nrow=2,
-                        rel_heights = c(.5,1),
+                        rel_heights = c(1,.4),
                         align='v')
-phvfsca_r2 <- plot_grid(gglist[[16]],
-                        gglist[[15]],
+phvfsca_r2 <- plot_grid(gglist[[15]],
+                        gglist[[16]],
                         nrow=2,
-                        rel_heights = c(.5,1),
+                        rel_heights = c(1,.4),
                         align='v')
 
 r2plots <- plot_grid(phv_r2,phvfsca_r2,phvaso_r2,phvasofsca_r2,nrow=1,ncol=4)
 pctmaeplots <- plot_grid(phv_pctmae,phvfsca_pctmae,phvaso_pctmae,phvasofsca_pctmae,nrow=1,ncol=4)
 allplots <- plot_grid(r2plots,pctmaeplots,nrow=2,ncol=1,labels='auto',label_size=36)
-allplots
+# allplots
 save_plot(allplots,filename='figs/xdate_prederr_comparison.eps',
           nrow=4,
           ncol=4,
           base_width=8)
 
 
+```
+
+```{r r2compare2, results='asis', fig.width=24}
+makeplot_diffonly=function(mdlpreds,errorvar,valtype,data){
+  # print(paste('1:',mdlpreds))
+  mytitle=function(mdlpreds){
+    # print(mdlpreds)
+    if(mdlpreds=='phv') myt='PHV'
+    if(mdlpreds=='phvfsca') myt='PHV-FSCA'
+    if(mdlpreds=='phvaso') myt='PHV-ASO'
+    if(mdlpreds=='phvasofsca') myt='PHV-ASO-FSCA'
+    return(myt)
+  }
+  yesGuide=FALSE
+  axtheme <- theme()
+  if(mdlpreds!='phv' & mdlpreds!='phvaso') {
+    axtheme <- theme(axis.text.y=element_blank(),
+                     axis.title.y=element_blank(),
+                     axis.ticks.y=element_blank()
+                     # axis.line.y=element_blank(),
+
+    )
+  }
+      if(errorvar=='r2')  {
+      ycoord=coord_cartesian(ylim=c(-0.21,0))
+      # yscale=scale_y_continuous(trans='reverse')
+      errlab='Delta*r^2'
+    }
+    if(errorvar=='pctmae')  {
+      errlab='Delta*"%"*MAE'
+      ycoord=coord_cartesian(ylim=c(0,200))
+    }
+    ylabel=parse(text=errlab)
+    data %>%
+      ggplot()+
+      geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+      ycoord+
+      facet_grid(~simyr,scales='free_x')+
+      labs(x='Simulation Date',
+           y=ylabel,
+           title=mytitle(mdlpreds)
+      )+
+      theme(axis.title.x=element_text(),
+            axis.text.x=element_text(angle=90,vjust=.5),
+            strip.text=element_text(face='bold'),
+            strip.background=element_blank(),
+            plot.title=element_text(face='bold',size=14),
+            panel.background=element_rect(),
+            panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+            plot.margin=unit(c(7,7,7,0),'pt')
+      )+
+      axtheme
+}
+
+plist2 <-
+  diff_df %>%
+  filter(valtype=='diff') %>%
+  mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca'))) %>%
+  group_by(mdlpreds,errorvar,valtype) %>%
+  nest() %>%
+  arrange(desc(errorvar),mdlpreds) %>%
+  mutate(gg=pmap(list(as.character(mdlpreds),errorvar,valtype,data),makeplot_diffonly))
+gglist=plist2$gg
+
+r2pg <- plot_grid(plotlist=gglist[1:4],nrow=2,align='h')
+pmpg <- plot_grid(plotlist=gglist[5:8],nrow=2,align='h')
+pg2 <- plot_grid(r2pg,pmpg,nrow=2,align='h',labels='auto',label_size=36)
+save_plot(pg2,filename='figs/xdate_prederr_diffonly_vertical.eps',
+nrow=4,
+ncol=2,
+base_width=8,
+base_aspect_ratio = .9)
+pg2
+
 
 diff_df %>%
-  filter(valtype=='diff',errorvar=='r2') %>% 
-  group_by(mdlpreds,var) %>% 
+  filter(valtype=='diff',errorvar=='r2') %>%
+  group_by(mdlpreds,var) %>%
   summarise(mean(val),
-            sd(val)) %>% 
+            sd(val)) %>%
   kable(digits=2,
         caption='summary stats for differences between r2 of bestpreds and lowestfscamae pred')
 
-diff_df %>% 
-  filter(valtype=='val',errorvar=='r2') %>% 
-  group_by(errorvar,mdlpreds,var) %>% 
+diff_df %>%
+  filter(valtype=='val',errorvar=='r2') %>%
+  group_by(errorvar,mdlpreds,var) %>%
   summarise(mean(val,na.rm=T),
-            sd(val,na.rm=T)) %>% 
+            sd(val,na.rm=T)) %>%
   kable(digits=2,
         caption='summary stats of r2 for different modeltypes')
 
@@ -1175,20 +1309,20 @@ diff_df %>%
 
 
 ```{r pctmaecompare, results='asis', fig.height=6}
-  
+
 diff_df %>%
-  filter(valtype=='diff',errorvar=='pctmae') %>% 
-  group_by(mdlpreds,var) %>% 
+  filter(valtype=='diff',errorvar=='pctmae') %>%
+  group_by(mdlpreds,var) %>%
   summarise(mean(val),
-            sd(val)) %>% 
+            sd(val)) %>%
   kable(digits=2,
         caption='summary stats for differences between pctmae of bestpreds and lowestfscamae pred')
 
-diff_df %>% 
-  filter(valtype=='val',errorvar=='pctmae') %>% 
-  group_by(errorvar,mdlpreds,var) %>% 
+diff_df %>%
+  filter(valtype=='val',errorvar=='pctmae') %>%
+  group_by(errorvar,mdlpreds,var) %>%
   summarise(mean(val,na.rm=T),
-            sd(val,na.rm=T)) %>% 
+            sd(val,na.rm=T)) %>%
   kable(digits=2,
         caption='summary stats for pctmae different modeltypes')
 
