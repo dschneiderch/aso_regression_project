@@ -1005,7 +1005,7 @@ g1=plot_cbd(combinedslopedf,'r2')
 g2=plot_cbd(combinedslopedf,'pctmae')
 pg=plot_grid(g1,g2,align='v',ncol=1,nrow=2)
 pg
-save_plot(plot=pg,filename = 'figs/xdate_meanfit.eps',nrow=2, base_width=12)
+save_plot(plot=pg,filename = 'figs/xdate_meanfit.pdf',nrow=2, base_width=12)
 
 combinedslopedf %>%
   group_by(mdlpreds,errorvar) %>%
