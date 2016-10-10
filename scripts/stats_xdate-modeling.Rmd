@@ -122,9 +122,11 @@ statboxplots=function(dF,metricvar){
 
 ggplot(dF)+
   geom_boxplot(aes_(x=~simdte,y=as.name(metricvar),fill=~mdlpreds),outlier.size=.5)+
-  facet_wrap(~simyr, scales='free', as.table=TRUE)+
+  facet_wrap(~simyr, scales='free_x', as.table=TRUE)+
     # guides(fill=guide_colorbar(reverse = T))+
-    theme(axis.text.x=element_text(angle=45,hjust=1))
+    theme(axis.text.x=element_text(angle=20,hjust=1,size=14),
+          axis.text.y=element_text(size=14))+
+    guides(fill=guide_legend('Model Predictors'))
 }
 
 ```
@@ -199,14 +201,23 @@ statheatmap(phvasofscastats,'r2')+
 ## all model boxplots
 
 ```{r}
-allstats %>%
+r2bxp <- 
+  allstats %>%
   filter(simyr!=mdlyr) %>%
 statboxplots('r2')+
-  scale_fill_brewer(palette='Paired')+
+  scale_fill_brewer(palette='Paired',
+                    labels=c('PHV','PHV-FSCA','PHV-ASO','PHV-ASO-FSCA'))+
   coord_cartesian(ylim=c(0,1))+
+  labs(x='Simulation Date',
+       y=expression(r^2))+
   geom_point(data=unnest(allbeststats,r2),aes(simdte,r2,fill=mdlpreds),shape=23,color='red',position=position_jitterdodge(),size=2,show.legend=F)+
+  guides(fill=FALSE)+
   theme(legend.justification=c(0,0),
-              legend.position=c(0,0.6))
+              legend.position=c(0,0.58),
+        strip.background=element_blank(),
+        strip.text=element_text(face='bold',size=16),
+        panel.border=element_rect(size=0.5,linetype='solid',color='grey30'))
+
 
 ```
 
@@ -264,15 +275,30 @@ statheatmap(phvasofscastats,'pctmae')+
 ## all model boxplots
 
 ```{r}
-allstats %>%
+pctmaebxp <- 
+  allstats %>%
   filter(simyr!=mdlyr) %>%
 statboxplots('pctmae')+
-  scale_fill_brewer(palette='Paired')+
   coord_cartesian(ylim=c(0,300))+
   geom_point(data=unnest(allbeststats,pctmae),aes(simdte,pctmae,fill=mdlpreds),shape=23,color='red',position=position_jitterdodge(),size=2,show.legend=F)+
+  scale_fill_brewer(palette='Paired',
+                    labels=c('PHV','PHV-FSCA','PHV-ASO','PHV-ASO-FSCA'))+
+  labs(x='Simulation Date',
+       y='%MAE')+
   theme(legend.justification=c(0,1),
-              legend.position=c(0.55,0.4))
+        legend.position=c(0,1),
+        strip.background=element_blank(),
+        strip.text=element_text(face='bold',size=16),
+        panel.border=element_rect(size=0.5,linetype='solid',color='grey30'))
+
 ```
+
+```{r}
+pg_bxp <- plot_grid(r2bxp,pctmaebxp,nrow=2,ncol=1, labels='auto',label_size=24,align='h')
+pg_bxp
+save_plot(pg_bxp,filename='figs/allmodelboxplots_r2-pctmae.pdf',base_height=16,base_aspect_ratio = 1)
+```
+
 
 # are the differences in patterns of fsca and swe similar? can fsca patterns be used to pick the date to predict swe?
 
@@ -379,11 +405,20 @@ datamax <- snow_stats_otheryrs %>%
 ssr2 <-
   left_join(ssr2,datamax,by='simdte')
 
-ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
+g <- 
+  ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
   geom_point()+
   geom_smooth(method='lm')+
-  geom_text(data=ssr2,aes(x,y,label=label),parse=TRUE,hjust=0,vjust=1)+
-  facet_wrap(~simdte,scales='free')
+  geom_text(data=ssr2,aes(x,y,label=label),parse=TRUE,hjust=0,vjust=1,nudge_x=-0.01,nudge_y=0.05)+#,fill='white',alpha=0.5,label.padding = unit(0.2, "lines"), label.r = unit(0.15, "lines"),label.size = 0.1)+
+  facet_wrap(~simdte,scales='free')+
+  labs(x='pixel-wise fSCA similarity',
+       y='pixel-wise SWE similarity')+
+  theme(strip.background=element_blank(),
+        strip.text=element_text(face='bold'))
+
+ggsave(g,filename='figs/swesimilarity_fscasimilarity.pdf',width=12,height=10)
+
+
 
 ```
 
