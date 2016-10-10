@@ -133,6 +133,7 @@ saveRDS(plusallphvmdls %>% select(-contains('aug'),-contains('obj')), paste0(pat
 # allphvmdls <- allphvmdls %>% filter(.id=='01'|.id=='02')
 ## need to join aso swe data for asoswe models. doing phv separately before so it isn't fitting models on sets of the same data
 
+
 allmdldata <- plusallphvmdls %>%
   select(dte,.id,nsamp,train,test) %>%
   mutate(yr=substr(dte,1,4))# %>% filter(dte==unique(dte)[1:2])
@@ -164,8 +165,6 @@ for(iyr in unique(allmdldata$yr)){
       phvasofsca_coef_glmmdl=map(phvasofsca_obj_glmmdl,coef)
     )
 
-  parallel::stopCluster(cl); cl=NULL
-
   saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvaso_aug_glmmdl), paste0(pathout,'phvasomdls_augment_',iyr,'_',ires,'.rds'))
   saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvaso_coef_glmmdl), paste0(pathout,'phvasomdls_coef_',iyr,'_',ires,'.rds'))
   #
@@ -173,3 +172,6 @@ for(iyr in unique(allmdldata$yr)){
   saveRDS(allasomdls %>% select(dte,yr,.id,nsamp,asodte,phvasofsca_coef_glmmdl), paste0(pathout,'phvasofscamdls_coef_',iyr,'_',ires,'.rds'))
 
 }
+
+
+  parallel::stopCluster(cl); cl=NULL
