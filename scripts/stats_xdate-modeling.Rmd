@@ -124,8 +124,13 @@ ggplot(dF)+
   geom_boxplot(aes_(x=~simdte,y=as.name(metricvar),fill=~mdlpreds),outlier.size=.5)+
   facet_wrap(~simyr, scales='free_x', as.table=TRUE)+
     # guides(fill=guide_colorbar(reverse = T))+
-    theme(axis.text.x=element_text(angle=20,hjust=1,size=14),
-          axis.text.y=element_text(size=14))+
+    theme(axis.text.x=element_text(angle=20,hjust=.8,size=16),
+          axis.title.x=element_text(size=18),
+          axis.text.y=element_text(size=16),
+          axis.title.y=element_text(size=18),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=18),
+          panel.border=element_rect(size=0.5,linetype='solid',color='grey30'))+
     guides(fill=guide_legend('Model Predictors'))
 }
 
@@ -213,10 +218,8 @@ statboxplots('r2')+
   geom_point(data=unnest(allbeststats,r2),aes(simdte,r2,fill=mdlpreds),shape=23,color='red',position=position_jitterdodge(),size=2,show.legend=F)+
   guides(fill=FALSE)+
   theme(legend.justification=c(0,0),
-              legend.position=c(0,0.58),
-        strip.background=element_blank(),
-        strip.text=element_text(face='bold',size=16),
-        panel.border=element_rect(size=0.5,linetype='solid',color='grey30'))
+              legend.position=c(0,0.58)
+        )
 
 
 ```
@@ -1002,14 +1005,16 @@ plot_cbd=function(dF,errorvar){
     leg=theme(axis.title.x=element_blank(),
               axis.text.x=element_blank(),
               axis.ticks.x=element_blank(),
-              strip.text=element_text(face='bold'),
+              strip.text=element_text(size=18,face='bold'),
               strip.background=element_rect(fill=NA,color='black')# plot.margin=unit(c(7,7,0,7),'pt')
     )
   } else {
     errlab='"%"*MAE'
-    xlabel='pixel-wise pattern similarity'
+    xlabel='pixel-wise FSCA similarity'
     leg=theme(strip.background=element_blank(),
-              strip.text=element_blank()
+              strip.text=element_blank(),
+              axis.title.x=element_text(size=18),
+              axis.text.x=element_text(size=16, angle=45, hjust=1)
               # plot.margin=unit(c(-7,7,7,7),'pt')
     )
 
@@ -1017,28 +1022,34 @@ plot_cbd=function(dF,errorvar){
   errlab=parse(text = paste0(errlab,'~of~prediction'))
 
   errorvar1=errorvar
-  mdf1=mdf %>% filter_(~errorvar==errorvar1)
-  slopedf1=slopedf %>% filter_(~errorvar==errorvar1,~pred<500)
+  mdf1=mdf %>% filter_(~errorvar==errorvar1) %>% 
+    mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
+  slopedf1=slopedf %>% 
+    filter_(~errorvar==errorvar1,~pred<500) %>% 
+    mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
   dF_grp <-
     dF %>%
     ungroup %>%
-    filter_(~errorvar==errorvar1)
+    filter_(~errorvar==errorvar1) %>% 
+    mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
 
   ggplot()+
     geom_line(data=slopedf1,aes(x=fscamae,y=pred,group=simdte),color='grey90')+
     geom_ribbon(data=dF_grp,aes(x=fscamae,ymin=l,ymax=u), fill='grey10',alpha=0.5)+
     geom_path(data=dF_grp,aes(x=fscamae,y=avg),size=1.5,color='blue')+
-    geom_text(data=mdf1,aes(x,y,label=label),hjust=0,vjust=0)+
+    geom_text(data=mdf1,aes(x,y,label=label),hjust=0,vjust=0,size=6)+
     facet_grid(~mdlpreds,scales='fixed', labeller=labeller(mdlpreds=tostring))+
     labs(x=xlabel,
          y=errlab)+
-    leg
+    leg+
+    theme(axis.text.y=element_text(size=16),
+          axis.title.y=element_text(size=18))
 }
 
 tostring=as_labeller(c('phv'='PHV','phvfsca'='PHV-FSCA','phvaso'='PHV-ASO','phvasofsca'='PHV-ASO-FSCA'))
 g1=plot_cbd(combinedslopedf,'r2')
 g2=plot_cbd(combinedslopedf,'pctmae')
-pg=plot_grid(g1,g2,align='v',ncol=1,nrow=2)
+pg=plot_grid(g1,g2,align='v',ncol=1,nrow=2,labels='auto',label_size=20)
 pg
 save_plot(plot=pg,filename = 'figs/xdate_meanfit.pdf',nrow=2, base_width=12)
 

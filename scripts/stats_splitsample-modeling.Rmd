@@ -124,13 +124,52 @@ bestpreds %>%
   ) %>% 
   knitr::kable(.,digits=2,scientific=F)
 
-ggplot(bestpreds)+
+r2plt <- 
+  bestpreds %>% 
+  filter(metricvar=='r2') %>% 
+ggplot()+
   geom_bar(aes(x=mdldte,y=metricval,fill=mdlpreds),stat='identity',position='dodge')+
-  facet_grid(metricvar~yr,scales='free')+
+  facet_wrap(~yr,scales='free_x')+
   scale_fill_brewer(palette='Paired')+
-  theme_bw(base_size=36)+
-  theme(axis.text.x=element_text(angle=45,hjust=1),
+  coord_cartesian(ylim=c(0,1))+
+  guides(fill=FALSE)+
+  labs(x='Simulation Date',
+       y=expression(r^2))+
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=20,size=16,hjust=.8),
+        axis.text.y=element_text(size=16),
+        axis.title.x=element_text(size=18),
+        axis.title.y=element_text(size=18),
+        strip.background=element_blank(),
+        strip.text=element_text(size=18,face='bold'),
         legend.justification=c(0,1),
         legend.position=c(0,1))
 
+pctmaeplt <- 
+bestpreds %>% 
+  filter(metricvar=='pctmae') %>% 
+ggplot()+
+  geom_bar(aes(x=mdldte,y=metricval,fill=mdlpreds),stat='identity',position='dodge')+
+  facet_wrap(~yr,scales='free_x')+
+  scale_fill_brewer(palette='Paired',labels=c('PHV','PHV-FSCA','PHV-ASO','PHV-ASO-FSCA'))+
+  guides(fill=guide_legend('Model Predictors'))+
+    labs(x='Simulation Date',
+       y='%MAE')+
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=20,size=16,hjust=.8),
+        axis.text.y=element_text(size=16),
+        axis.title.x=element_text(size=18),
+        axis.title.y=element_text(size=18),
+        strip.background=element_blank(),
+        strip.text=element_text(size=18,face='bold'),
+        legend.justification=c(0,1),
+        legend.position=c(0,1))
+
+pgsplit <- plot_grid(r2plt,pctmaeplt,nrow=2,ncol=1,labels='auto',label_size=20)
+  
+save_plot(pgsplit,filename='figs/prederror_splitsample.pdf',
+          nrow=4,
+          ncol=1,
+          base_width=12,
+          base_aspect_ratio = .5)
 ```
