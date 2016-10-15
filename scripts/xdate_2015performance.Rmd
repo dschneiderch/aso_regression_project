@@ -1,0 +1,491 @@
+---
+title: "xdate-2015"
+author: "Dominik Schneider"
+output:
+  html_document:
+    fig_height: 12
+    fig_width: 16
+    self_contained: true
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(raster)
+library(tidyverse)
+library(cowplot)
+library(viridis)
+library(broom)
+library(viridis)
+library(cowplot)
+library(RColorBrewer)
+library(knitr)
+library(stargazer)
+library(glmnetUtils)
+
+
+#must have rprojroot installed from devtools::install_github("krlmlr/rprojroot")
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache=FALSE,echo=FALSE,message = FALSE,warning=FALSE,error=FALSE,hide=TRUE,results='hide')#,fig.height=12,fig.width=12)
+```
+
+
+```{r params}
+ires='500m'
+basin='tuo'
+pathin='output/xdate-modeling/'
+```
+
+```{r functions}
+invisible(lapply(dir('lib','.R',full.names=T),source))
+source('scripts/functions_modelfitting.R')
+
+
+r2 <- function(yobs,yhat){
+  cor(yobs,yhat,use='complete.obs')^2
+}
+mae <- function(yobs,yhat){
+  mean(abs(yhat-yobs),na.rm=T)
+}
+pctmae <- function(yobs,yhat){
+  mae(yobs,yhat)/mean(yobs,na.rm=T)*100
+}
+bias <- function(yobs,yhat){
+  mean(yhat-yobs,na.rm=T)
+}
+pctbias <- function(yobs,yhat){
+  bias(yobs,yhat)/mean(yobs,na.rm=T)*100
+}
+mse <- function(yobs,yhat){
+  mean((yhat-yobs)^2,na.rm=T)
+}
+
+fix_data=function(df,alldata2) {
+  mutate(df, simdte=alldata2$dte) #need to add simdate to aug data
+}
+
+generate_stats=function(dF){
+  dF %>%
+  group_by(mdldte,simdte) %>%
+  summarise(r2=r2(swe,swehat),
+            pctmae=pctmae(swe,swehat)) %>%
+  mutate(simyr=substr(simdte,1,4),
+         mdlyr=substr(mdldte,1,4))
+}
+
+best_stats <- function(dF){
+  dF %>%
+    ungroup %>%
+    mutate(simyr=substr(simdte,1,4),
+           mdlyr=substr(mdldte,1,4)) %>%
+    filter(simyr!=mdlyr) %>%
+    group_by(simdte,simyr) %>%
+    nest() %>%
+    mutate(pctmae=map(data,function(dF2){
+      dF2 %>% summarise(mdldte=mdldte[which.min(pctmae)],
+                        mdlyr=substr(mdldte,1,4),
+                        pctmae=min(pctmae))
+    }),
+    r2=map(data,function(dF2){
+      dF2 %>% summarise(mdldte=mdldte[which.max(r2)],
+                        mdlyr=substr(mdldte,1,4),
+                        r2=max(r2))
+    })
+    )
+}
+```
+
+```{r data}
+# forgot to save simulation dates but alldata is saved with every run (both for xdate and splitsample) so use that to add date
+alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
+
+phvmdls <- readRDS(paste0(pathin,'phvmdls_augment_',ires,'.rds')) %>%
+  mutate(phv_aug_glmmdl=map(phv_aug_glmmdl, fix_data, alldata),
+         phvfsca_aug_glmmdl=map(phvfsca_aug_glmmdl, fix_data, alldata)
+  )
+
+phvasomdls <- readRDS(paste0(pathin,'asomdls_augment_',ires,'.rds')) %>%
+  mutate(phvaso_aug_glmmdl=map(phvaso_aug_glmmdl, fix_data, alldata),
+         phvasofsca_aug_glmmdl=map(phvasofsca_aug_glmmdl, fix_data, alldata)
+  )
+
+phv <- phvmdls %>% dplyr::select(mdldte,phv_aug_glmmdl) %>% unnest()
+phvfsca <- phvmdls %>% dplyr::select(mdldte,phvfsca_aug_glmmdl) %>% unnest()
+phvaso <- phvasomdls %>% dplyr::select(mdldte,phvaso_aug_glmmdl) %>% unnest()
+phvasofsca <- phvasomdls %>% dplyr::select(mdldte,phvasofsca_aug_glmmdl) %>% unnest()
+```
+
+
+```{r preddata_stats_phvfsca}
+preddata <- 
+  phvfsca %>% 
+  mutate(simyr=substr(simdte,1,4),
+         mdlyr=substr(mdldte,1,4)) %>% 
+  filter(simyr!=mdlyr)
+
+
+stats <- 
+  preddata %>% 
+  group_by(mdldte,simdte, simyr, mdlyr) %>% 
+  nest() %>% 
+  mutate(r2=map_dbl(data,function(x) r2(x$swe,x$swehat)),
+         pctmae=map_dbl(data,function(x) pctmae(x$swe,x$swehat)))
+
+
+```
+
+```{r prederror2015, eval=F}
+plot_r2 <- function(dF){
+  dF %>% 
+    filter(simyr!=2015) %>% 
+    ggplot(aes(x=simdte,y=mean,shape=simyr))+
+    geom_pointrange(aes(ymin=min,ymax=max),color='grey50')+
+    geom_point()+
+    scale_y_continuous(limits=c(0,1))+
+    labs(y=expression(r^2),
+         x='')+#Simulation Date')+
+    facet_grid(~simyr,scales='free')+
+    theme_cowplot(font_size = 16)+
+    theme(axis.text.x=element_blank(),#element_text(angle=45,hjust=1),
+          # axis.line.x=element_blank(),
+          axis.ticks.x=element_blank(),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=18))
+}
+plot_pctmae <- function(dF){
+  dF %>% 
+    filter(simyr!=2015) %>% 
+    ggplot(aes(x=simdte,y=mean,shape=simyr))+
+    geom_pointrange(aes(ymin=min,ymax=max),color='grey50')+
+    geom_point()+
+    coord_cartesian(ylim=c(0,200))+#scale_y_continuous(limits=c(0,200))+
+    labs(y='%MAE',
+         x='Simulation Date')+
+    facet_grid(~simyr,scales='free')+
+    theme_cowplot(font_size=16)+
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=18))
+}
+
+statsumm <- 
+  stats %>% 
+  group_by(simdte,simyr) %>% 
+  summarise_each(funs(min,max,mean),r2,pctmae) %>% 
+  gather(errorvar,errorval,contains('r2'),contains('pctmae')) %>% 
+  separate(errorvar, into=c('errorvar','stat')) %>% 
+  spread(stat,errorval)
+
+p1 <- 
+  statsumm %>% filter(errorvar=='r2') %>% 
+  plot_r2 +
+  guides(shape=guide_legend('Simulation\nYear'))+
+  theme(legend.justification=c(0,0),
+        legend.position=c(0.01,0.01))
+
+p2 <- 
+  statsumm %>% filter(errorvar=='pctmae') %>% 
+  plot_pctmae + guides(shape='none')
+
+statsumm2015 <- 
+  stats %>% 
+  filter(mdlyr==2015) %>% 
+  group_by(simdte,simyr) %>% 
+  summarise_each(funs(min,max,mean),r2,pctmae) %>% 
+  gather(errorvar,errorval,contains('r2'),contains('pctmae')) %>% 
+  separate(errorvar, into=c('errorvar','stat')) %>% 
+  spread(stat,errorval)
+
+
+p3 <- 
+  statsumm2015 %>% filter(errorvar=='r2') %>% 
+  plot_r2 + guides(shape='none')
+
+p4 <- 
+  statsumm2015 %>% filter(errorvar=='pctmae') %>% 
+  plot_pctmae + guides(shape='none')
+
+pg <- 
+  plot_grid(p1,p3,p2,p4,
+            ncol=2,
+            align='v',
+            labels=c('a','b','',''),
+            label_size=24)
+
+save_plot(pg,
+          filename=paste0('figs/prederror_2015only-allyrs.pdf'),
+          ncol=2,
+          nrow=2,
+          base_width=8)
+
+```
+
+```{r boxplots_eachYear}
+
+yrs=2013:2016
+yroi=2013
+for(yroi in yrs){
+ga16=stats %>% 
+    filter_(~simyr!=yroi) %>% 
+    ggplot(aes(x=simdte,y=pctmae))+
+    geom_boxplot(outlier.size = .5)+
+    geom_point(aes(color=mdlyr),alpha=.5,position='jitter')+
+    coord_cartesian(ylim=c(0,300))+
+  # scale_y_continuous(limits=c(0,1))+
+    labs(y='%MAE',
+         x='Simulation Date')+
+    facet_grid(~simyr,scales='free')+
+    theme_cowplot(font_size=16)+
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=18),
+          legend.justification=c(0,1),
+          legend.position=c(0.01,.99))
+
+
+yrind=which(yrs==yroi)
+annotedF=data_frame(x=1, y=250, label=c(paste('Model Year',yroi),'',''), simyr=yrs[-yrind])
+
+gb16=stats %>% 
+    filter_(~simyr!=yroi,~mdlyr==yroi) %>% 
+    ggplot(aes(x=simdte,y=pctmae))+
+    geom_boxplot(outlier.size = .5)+
+    coord_cartesian(ylim=c(0,300))+
+    geom_text(data=annotedF,aes(x,y,label=label),size=6,hjust=0)+
+  # scale_y_continuous(limits=c(0,1))+
+    labs(y='%MAE',
+         x='Simulation Date')+
+    facet_grid(~simyr,scales='free')+
+    theme_cowplot(font_size=16)+
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=18))
+
+pgyr <- plot_grid(ga16, gb16, nrow=2)
+# pgyr
+
+save_plot(pgyr,
+          filename=paste0('figs/boxplots_pctmae_predictedwith',yroi,'.pdf'),
+          nrow=2,
+          base_width=10)
+}
+
+```
+
+```{r bootstrap_prederror_from2015}
+myfun=function(nsamp1){
+  nsamp=as.numeric(nsamp1$nsamp)
+  preddata %>% 
+    filter_(~mdlyr==yroi,~simyr!=yroi) %>%
+    group_by(simdte) %>% 
+    do({
+      preddf=.
+      print(unique(preddf$simdte))
+      data_frame(rep=1:100) %>% 
+        group_by(rep) %>% 
+        do({
+          dtes <- sample(unique(preddf$mdldte),nsamp)
+          preddf %>% 
+            filter(mdldte %in% dtes) %>% 
+            group_by(simdte) %>% 
+            nest() %>% 
+            mutate(r2=map_dbl(data,function(x) r2(x$swe,x$swehat)),
+                   pctmae=map_dbl(data,function(x) pctmae(x$swe,x$swehat)),
+                   pctbias=map_dbl(data,function(x) pctbias(x$swe,x$swehat))
+            ) %>% 
+            dplyr::select(-data)
+        })
+    })
+}
+ 
+
+yroi=2014     
+for(yroi in 2013:2016){
+numdtes <- 
+  preddata %>% 
+  filter_(~mdlyr==yroi) %>% 
+  summarise(length(unique(mdldte))) %>% 
+  as.numeric
+
+boot_prederror <- 
+  data_frame(nsamp=seq_len(numdtes)) %>% 
+  split(.$nsamp) %>% 
+  map_df(.f=myfun,.id='numsample') %>% 
+  mutate(numsample=as.numeric(numsample))
+
+saveRDS(boot_prederror,paste0('output/boot_prederror_predictedwith',yroi,'.rds'))
+# 
+# ggplot(boot_prederror)+
+#   geom_violin(aes(x=numsample,y=r2))
+# 
+# ggplot(boot_prederror)+
+#   geom_violin(aes(x=numsample,y=pctmae))
+# 
+# ggplot(boot_prederror)+
+#   geom_boxplot(aes(x=numsample,y=pctmae))
+
+errorvar='pctmae'
+for(errorvar in c('pctmae','pctbias')){
+  stts <- 
+    boot_prederror %>% 
+    mutate(nosample=numsample) %>% 
+    group_by(numsample) %>% 
+    summarise_(avg=lazyeval::interp(~ mean(var), var = as.name(errorvar)),
+               sd=lazyeval::interp(~ sd(var), var = as.name(errorvar))) %>% 
+    mutate(label1=paste0('avg=',format(avg,digits=1)),
+            label2=paste0('sd=',format(sd,digits=1)))
+             
+  gplots <- 
+    boot_prederror %>% 
+    mutate(nosample=numsample) %>% 
+    group_by(numsample) %>% 
+    nest() %>% 
+    mutate(gg=map(data,function(dF) {
+      print(errorvar)
+      ggplot(data=dF,aes_q(x = as.name(errorvar)))+
+        geom_histogram()+
+        geom_text(data=stts %>% filter(numsample==unique(dF$nosample)), aes(x=avg,y=300,label=label1),color='red')+
+        geom_text(data=stts %>% filter(numsample==unique(dF$nosample)),aes(x=avg,y=200,label=label2),color='blue')+
+        labs(title=paste('numsample',unique(dF$nosample)))
+    }))
+  
+gplots$gg[[1]]
+ggc <- plot_grid(plotlist=gplots$gg,nrow=floor(numdtes/3))
+  
+save_plot(plot=ggc,
+          filename=paste0('figs/hist_bootstrap_',errorvar,'_predictedwith',yroi,'.pdf'),
+          nrow=floor(numdtes/3),
+          base_aspect_ratio = 3)
+}
+
+}
+
+
+yroi=2013
+# errorvar='pctmae'
+boot_prederror <- readRDS(paste0('output/boot_prederror_predictedwith',yroi,'.rds'))
+
+
+boot_prederror %>% 
+  group_by(numsample) %>% 
+  summarise(avg=mean(pctmae),
+            se=sd(pctmae)/sqrt(n()))
+
+boot_prederror %>% 
+  group_by(numsample) %>% 
+  do(
+    tidy(t.test(.$pctmae))
+  )
+
+boot_prederror %>% 
+  group_by(numsample) %>% 
+  summarise(n())
+
+
+```
+
+
+
+```{r eval=F}
+swefn = dir('data/swe',glob2rx('tuo_500m*.tif$'),full.name=T)
+swestack=stack(swefn)
+names(swestack) <- sapply(strsplit(basename(swefn),'[_.]'),'[',3)
+
+swedf <- 
+  as.data.frame(swestack,xy=T) %>% 
+  tbl_df %>% 
+  gather(simdte,swe,-x,-y) %>% 
+  mutate(simdte=gsub('X','',simdte),
+         x=as.character(x),
+         y=as.character(y))
+  
+makeRaster <- function(subdf){
+  print(unique(subdf$simdte))
+  swedf %>% 
+    filter(simdte==unique(subdf$simdte)) %>% 
+    left_join(subdf,by=c('simdte','x','y'))
+}
+
+swemap <- swestack[[1]]
+outputpath=paste0('output/predmaps')
+dir.create(outputpath,recursive = T)
+diffoutputpath=paste0('output/difference_from_aso')
+dir.create(diffoutputpath,recursive = T)
+figpath=paste0('figs/predmaps')
+dir.create(figpath,rec=T)
+saveRaster <- function(rastdf){
+  simdte=unique(rastdf$simdte)
+  mdldte=unique(rastdf$mdldte)[2]
+  
+  savefn=paste0('phvfsca_',simdte,'from',mdldte)
+  savefn2=paste0('phvfsca_diff_',simdte,'from',mdldte)
+  
+  swemap <- setValues(swemap,rastdf$swehat)    
+  writeRaster(swemap,file.path(outputpath,paste0(savefn,'.tif')),NAflag=-99,overwrite=T)
+  
+  swediffmap <- setValues(swemap,NA)
+  swediffmap <- setValues(swediffmap,rastdf$swehat-rastdf$swe.y)
+  writeRaster(swediffmap,file.path(diffoutputpath,paste0(savefn2,'.tif')),NAflag=-99,overwrite=T)
+  
+  gy <- 
+    ggplot(rastdf)+
+    geom_raster(aes(as.numeric(x),as.numeric(y),fill=swe.y))+
+    scale_x_continuous(expand=c(0,0))+
+    scale_y_continuous(expand=c(0,0))+
+    scale_fill_gradientn(colors=c('white',viridis(119)),limits=c(0,1.2))
+    # scale_fill_viridis(limits=c(0,1.2))+
+    theme(axis.line=element_blank(),
+          legend.background=element_rect(fill='grey50'))
+  
+  ghat <- 
+    ggplot(rastdf)+
+    geom_raster(aes(as.numeric(x),as.numeric(y),fill=swehat))+
+    scale_x_continuous(expand=c(0,0))+
+    scale_y_continuous(expand=c(0,0))+
+    # scale_fill_viridis(limits=c(0,1.2))+
+    scale_fill_gradientn(colors=c('white',viridis(119)),limits=c(0,1.2))
+    theme(axis.line=element_blank(),
+          legend.background=element_rect(fill='grey50'))
+  
+  gdiff <- 
+    ggplot(rastdf)+
+    geom_raster(aes(as.numeric(x),as.numeric(y),fill=swehat-swe.y))+
+    scale_x_continuous(expand=c(0,0))+
+    scale_y_continuous(expand=c(0,0))+
+    scale_fill_distiller(limits=c(-1.5,1.5),type='div')+
+    theme(axis.line=element_blank())
+  
+  
+  plot_grid(gy,ghat,gdiff,ncol=3) %>% save_plot(plot=.,filename=file.path(figpath,paste0(savefn,'.jpg')),
+                                          ncol=3,
+                                          base_width=6,
+                                          base_aspect_ratio = 1)
+}
+
+tt <- 
+  phvfsca %>% 
+  filter(simdte=='20150217') %>% 
+  split(list(.$simdte,.$mdldte)) %>% 
+  map(.f=makeRaster) %>% 
+  walk(.f=saveRaster)
+   
+ttnam=names(tt)
+mdldte=20150409
+simdte=20130403
+searchstring=paste(simdte,mdldte,sep='.')
+ind=which(ttname==searchstring)
+
+ggplot(tt[[ind]])+
+  geom_raster(aes(as.numeric(x),as.numeric(y),fill=swe.x))+
+  scale_fill_gradientn(colors=c('white',viridis(119)),limits=c(0,1.2))
+ggplot(tt[[ind]])+
+  geom_raster(aes(as.numeric(x),as.numeric(y),fill=swe.y))+
+  scale_fill_gradientn(colors=c('white',viridis(119)),limits=c(0,1.2))
+  # scale_fill_viridis(limits=c(0.01,1.5))
+
+  
+snowhat_stack <- full_join(swedf,phvfsca %>% dplyr::select(-swe))
+
+tmp=phvfsca %>% filter(simdte==20130403,mdldte==20130403) %>% makeRaster
+View(tmp)
+```
+

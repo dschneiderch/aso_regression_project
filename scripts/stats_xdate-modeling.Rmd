@@ -51,7 +51,15 @@ pctmae <- function(yobs,yhat){
 mse <- function(yobs,yhat){
   mean((yhat-yobs)^2,na.rm=T)
 }
-
+rmse <- function(yobs,yhat){
+  sqrt(mse(yobs,yhat))
+}
+bias <- function(yobs,yhat){
+  mean(yhat-yobs,na.rm=T)
+}
+pctbias <- function(yobs,yhat){
+  bias(yobs,yhat)/mean(yobs,na.rm=T)*100
+}
 fix_data=function(df,alldata2) {
   mutate(df, simdte=alldata2$dte) #need to add simdate to aug data
 }
@@ -60,7 +68,10 @@ generate_stats=function(dF){
   dF %>%
   group_by(mdldte,simdte) %>%
   summarise(r2=r2(swe,swehat),
-            pctmae=pctmae(swe,swehat)) %>%
+            predmae=mae(swe,swehat),
+            rmse=rmse(swe,swehat),
+            pctmae=pctmae(swe,swehat),
+            pctbias=pctbias(swe,swehat)) %>%
   mutate(simyr=substr(simdte,1,4),
          mdlyr=substr(mdldte,1,4))
 }
@@ -76,7 +87,14 @@ best_stats <- function(dF){
     mutate(pctmae=map(data,function(dF2){
       dF2 %>% summarise(mdldte=mdldte[which.min(pctmae)],
                         mdlyr=substr(mdldte,1,4),
-                        pctmae=min(pctmae))
+                        pctmae=min(pctmae),
+                        predmae=min(predmae),
+                        rmse=min(rmse))
+    }),
+    pctbias=map(data,function(dF2){
+      dF2 %>% summarise(mdldte=mdldte[which.min(abs(pctbias))],
+                        mdlyr=substr(mdldte,1,4),
+                        pctbias=pctbias[which.min(abs(pctbias))])
     }),
     r2=map(data,function(dF2){
       dF2 %>% summarise(mdldte=mdldte[which.max(r2)],
@@ -107,7 +125,7 @@ phvaso <- phvasomdls %>% dplyr::select(mdldte,phvaso_aug_glmmdl) %>% unnest()
 phvasofsca <- phvasomdls %>% dplyr::select(mdldte,phvasofsca_aug_glmmdl) %>% unnest()
 ```
 
-```{r heatmap_plotfunction}
+```{r plotfunctions}
 
 statheatmap=function(dF,metricvar){
   ggplot(dF)+
@@ -119,10 +137,9 @@ statheatmap=function(dF,metricvar){
 }
 
 statboxplots=function(dF,metricvar){
-
-ggplot(dF)+
-  geom_boxplot(aes_(x=~simdte,y=as.name(metricvar),fill=~mdlpreds),outlier.size=.5)+
-  facet_wrap(~simyr, scales='free_x', as.table=TRUE)+
+  ggplot(dF)+
+    geom_boxplot(aes_(x=~simdte,y=as.name(metricvar),fill=~mdlpreds),outlier.size=.5)+
+    facet_wrap(~simyr, scales='free_x', as.table=TRUE)+
     # guides(fill=guide_colorbar(reverse = T))+
     theme(axis.text.x=element_text(angle=20,hjust=.8,size=16),
           axis.title.x=element_text(size=18),
@@ -136,7 +153,7 @@ ggplot(dF)+
 
 ```
 
-# r^2^
+
 
 ```{r results='asis'}
 phvstats <- generate_stats(phv) %>% mutate(mdlpreds='phv')
@@ -153,6 +170,11 @@ allbeststats <- bind_rows(bestphv,bestphvfsca,bestphvaso,bestphvasofsca) %>%
 allstats <- bind_rows(phvstats,phvfscastats,phvasostats,phvasofscastats) %>%
   mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
 
+```
+
+# r^2^
+
+```{r best prediction summary}
 unnest(allbeststats,r2) %>%
   select(simdte,mdlpreds,r2) %>%
   group_by(mdlpreds) %>%
@@ -162,6 +184,15 @@ unnest(allbeststats,r2) %>%
   kable(.,digits=2,
         caption='summary of best predictions')
 
+
+unnest(allbeststats,r2) %>%
+  select(simdte,mdlpreds,simyr,r2) %>%
+  group_by(mdlpreds,simyr) %>%
+  summarise(mean(r2),
+            median(r2),
+            sd(r2)) %>%
+  kable(.,digits=2,
+        caption='summary of best predictions by year')
 ```
 
 ## phv
@@ -176,12 +207,11 @@ statheatmap(phvstats,'r2')+
 ## phvfsca
 
 ```{r eval=F}
-
 statheatmap(phvfscastats,'r2')+
   scale_fill_viridis(option = 'C', guide='colorbar',limits=c(0,1))+
   geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
-
 ```
+
 
 ## phvaso
 
@@ -194,7 +224,6 @@ statheatmap(phvasostats,'r2')+
 ```
 
 ## phvasofsca
-
 ```{r eval=F}
 
 statheatmap(phvasofscastats,'r2')+
@@ -202,6 +231,8 @@ statheatmap(phvasofscastats,'r2')+
   geom_point(data=unnest(bestphv,r2),aes(mdldte,simdte),shape=4)
 
 ```
+
+
 
 ## all model boxplots
 
@@ -230,13 +261,40 @@ statboxplots('r2')+
 
 ```{r results='asis'}
 unnest(allbeststats,pctmae) %>%
-  select(simdte,mdlpreds,pctmae) %>%
+  select(simdte,mdlpreds,pctmae,mae,rmse,simyr) %>%
   group_by(mdlpreds) %>%
+  summarise(mean(pctmae),
+            median(pctmae),
+            sd(pctmae),
+            mean(predmae,na.rm=T),
+            mean(rmse)) %>%
+  kable(.,digits=4,
+        caption='summary of best predictions')
+
+unnest(allbeststats,pctmae) %>%
+  select(simdte,mdlpreds,pctmae,simyr) %>%
+  group_by(mdlpreds,simyr) %>%
   summarise(mean(pctmae),
             median(pctmae),
             sd(pctmae)) %>%
   kable(.,digits=2,
-        caption='summary of best predictions')
+        caption='summary of best predictions by year')
+
+unnest(allstats,pctmae) %>%
+  select(simdte,mdlpreds,pctmae,simyr) %>%
+  group_by(mdlpreds,simyr) %>%
+  summarise(mean(pctmae),
+            median(pctmae),
+            sd(pctmae)) %>%
+  kable(.,digits=2,
+        caption='summary of all predictions by year')
+
+unnest(allstats,pctmae) %>% 
+  group_by(mdlpreds,mdlyr) %>% 
+  summarise(mean(pctmae),
+            sd(pctmae)) %>% 
+  kable(.,digits=2,
+        caption='summary of all predictions by model year')
 ```
 
 ## phv
@@ -254,6 +312,52 @@ statheatmap(phvfscastats,'pctmae')+
   scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
   geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
 
+```
+
+```{r boxplot_phvfsca_allyears}
+ga_m=phvfscastats %>% 
+  filter(simyr!=mdlyr) %>% 
+    ggplot(aes(x=simdte,y=pctmae))+
+    geom_boxplot(outlier.size = .5)+
+    geom_point(aes(color=mdlyr),alpha=.5,position='jitter')+
+    coord_cartesian(ylim=c(0,300))+
+    scale_y_continuous(breaks=seq(0,300,50),labels=sprintf("%4s",seq(0,300,50)))+
+    labs(y='%MAE',
+         x='Simulation Date',
+         title='PHV-FSCA')+
+    guides(color=guide_legend('Model Yr',override.aes = list(alpha=1)))+
+    facet_grid(~simyr,scales='free')+
+    theme_cowplot(font_size=16)+
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=14),
+          plot.title=element_text(face='bold',size=18),
+          panel.background=element_rect(),
+          panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+          legend.justification=c(0,1),
+          legend.position=c(0.01,.99))
+
+# gb=stats %>% 
+#     ggplot(aes(x=simdte,y=pctmae))+
+#     geom_boxplot(outlier.size = .5)+
+#     coord_cartesian(ylim=c(0,300))+
+#     geom_text(data=annotedF,aes(x,y,label=label),size=6,hjust=0)+
+#   # scale_y_continuous(limits=c(0,1))+
+#     labs(y='%MAE',
+#          x='Simulation Date')+
+#     facet_grid(~simyr,scales='free')+
+#     theme_cowplot(font_size=16)+
+#     theme(axis.text.x=element_text(angle=45,hjust=1),
+#           strip.background=element_blank(),
+#           strip.text=element_text(face='bold',size=18))
+# 
+# pgyr <- plot_grid(ga, gb, nrow=2)
+# pgyr
+
+save_plot(ga_m,
+          filename=paste0('figs/boxplots_pctmae_phvfsca_allyears.pdf'),
+          nrow=1,
+          base_width=10)
 ```
 
 ## phvaso
@@ -274,6 +378,39 @@ statheatmap(phvasofscastats,'pctmae')+
   scale_fill_viridis(direction=-1,option = 'B', guide='legend',limits=c(0,200))+
   geom_point(data=unnest(bestphv,pctmae),aes(mdldte,simdte),shape=4)
 ```
+
+```{r boxplot_phvasofsca_allyears}
+gb_m=phvasofscastats %>% 
+  filter(simyr!=mdlyr) %>% 
+    ggplot(aes(x=simdte,y=pctmae))+
+    geom_boxplot(outlier.size = .5)+
+    geom_point(aes(color=mdlyr),alpha=.5,position='jitter')+
+    coord_cartesian(ylim=c(0,300))+
+    scale_y_continuous(breaks=seq(0,300,50),labels=sprintf("%4s",seq(0,300,50)))+
+    labs(y='%MAE',
+         x='Simulation Date',
+         title='PHV-ASO-FSCA')+
+      guides(color=guide_legend('Model Yr',override.aes = list(alpha=1)))+
+    facet_grid(~simyr,scales='free')+
+    theme_cowplot(font_size=16)+
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=14),
+          plot.title=element_text(face='bold',size=18),
+          panel.background=element_rect(),
+          panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+          legend.justification=c(0,1),
+          legend.position=c(0.01,.99))
+
+save_plot(gb_m,
+          filename=paste0('figs/boxplots_pctmae_phvasofsca_allyears.pdf'),
+          nrow=1,
+          base_width=10)
+
+
+```
+
+
 
 ## all model boxplots
 
@@ -296,11 +433,169 @@ statboxplots('pctmae')+
 
 ```
 
-```{r}
-pg_bxp <- plot_grid(r2bxp,pctmaebxp,nrow=2,ncol=1, labels='auto',label_size=24,align='h')
-pg_bxp
-save_plot(pg_bxp,filename='figs/allmodelboxplots_r2-pctmae.pdf',base_height=16,base_aspect_ratio = 1)
+# % Bias
+
+```{r results='asis'}
+unnest(allbeststats,pctbias) %>%
+  select(simdte,mdlpreds,pctbias,simyr) %>%
+  group_by(mdlpreds) %>%
+  summarise(mean(pctbias),
+            median(pctbias),
+            sd(pctbias)) %>%
+  kable(.,digits=2,
+        caption='summary of best predictions')
+
+unnest(allbeststats,pctbias) %>%
+  select(simdte,mdlpreds,pctbias,simyr) %>%
+  group_by(mdlpreds,simyr) %>%
+  summarise(mean(pctbias),
+            median(pctbias),
+            sd(pctbias),
+            min(pctbias),
+            max(pctbias)) %>%
+  kable(.,digits=2,
+        caption='summary of best predictions by year')
+
+unnest(allstats,pctbias) %>% 
+  group_by(mdlpreds,mdlyr) %>% 
+  summarise(mean(pctbias),
+            sd(pctbias)) %>% 
+  kable(.,digits=2,
+        caption='summary of all predictions by model year')
 ```
+
+## phvfsca
+```{r boxplot_phvasofsca_allyears}
+ga_b=phvfscastats %>% 
+  filter(simyr!=mdlyr) %>% 
+    ggplot(aes(x=simdte,y=pctbias))+
+    geom_hline(aes(yintercept=0))+
+    geom_boxplot(outlier.size = .5)+
+    geom_point(aes(color=mdlyr),alpha=.5,position='jitter')+
+    coord_cartesian(ylim=c(-100,400))+
+    scale_y_continuous(breaks=seq(-100,400,50),labels=sprintf("%4s",seq(-100,400,50)))+
+    labs(y='%Bias',
+         x='Simulation Date',
+         title='PHV-FSCA')+
+      guides(color=guide_legend('Model Yr',override.aes = list(alpha=1)))+
+    facet_grid(~simyr,scales='free')+
+    theme_cowplot(font_size=16)+
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=14),
+          plot.title=element_text(face='bold',size=18),
+          panel.background=element_rect(),
+          panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+          legend.justification=c(0,1),
+          legend.position=c(0.01,.99))
+
+save_plot(ga_b,
+          filename=paste0('figs/boxplots_pctbias_phvfsca_allyears.pdf'),
+          nrow=1,
+          base_width=10)
+
+
+```
+
+## phvasofsca
+```{r boxplot_phvasofsca_allyears}
+gb_b=phvasofscastats %>% 
+  filter(simyr!=mdlyr) %>% 
+    ggplot(aes(x=simdte,y=pctbias))+
+  
+    geom_boxplot(outlier.size = .5)+
+    geom_point(aes(color=mdlyr),alpha=.5,position='jitter')+
+    coord_cartesian(ylim=c(-100,400))+
+    scale_y_continuous(breaks=seq(-100,400,50),labels=sprintf("%4s",seq(-100,400,50)))+
+    labs(y='%Bias',
+         x='Simulation Date',
+         title='PHV-ASO-FSCA')+
+      guides(color=guide_legend('Model Yr',override.aes = list(alpha=1)))+
+    facet_grid(~simyr,scales='free')+
+    theme_cowplot(font_size=16)+
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          strip.background=element_blank(),
+          strip.text=element_text(face='bold',size=14),
+          plot.title=element_text(face='bold',size=18),
+          panel.background=element_rect(),
+          panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+          legend.justification=c(0,1),
+          legend.position=c(0.01,.99))
+
+save_plot(gb_b,
+          filename=paste0('figs/boxplots_pctbias_phvasofsca_allyears.pdf'),
+          nrow=1,
+          base_width=10)
+
+
+```
+
+```{r}
+topax=theme(axis.text.x=element_blank(),
+            axis.ticks.x=element_blank(),
+            axis.title.x=element_blank(),
+            plot.margin=unit(c(7,7,0,7),'pt'))
+
+pg_b <- plot_grid(ga_m+topax,gb_m+topax)
+pg_m <- plot_grid(ga_b,gb_b)
+
+multipg2 <- plot_grid(pg_b,pg_m, nrow=2,rel_heights=c(0.6,0.8),align='hv')
+
+save_plot(plot=multipg2,
+          filename='figs/prederror_allyrscolors_pctbias_pctmae_best-vs-lowestfscamae.pdf',
+          base_width = 12,
+          base_aspect_ratio = 4,
+          nrow=2,
+          ncol=2)
+
+pg_pf <- plot_grid(ga_m+topax,ga_b,
+                   nrow=2,
+                   align='v',
+                   rel_heights = c(0.6,0.8),
+                   labels='auto',
+                   label_size=20)
+save_plot(plot=pg_pf,
+          filename='figs/prederror_phvfscaonly_allyrscolors_pctbias_pctmae_best-vs-lowestfscamae.pdf',
+          base_width=12,
+          base_aspect_ratio = 4,
+          nrow=2,
+          ncol=1)
+
+
+```
+
+
+```{r}
+pctbiasbxp <- 
+  allstats %>%
+  filter(simyr!=mdlyr) %>%
+statboxplots('pctbias')+
+  coord_cartesian(ylim=c(-500,500))+
+  geom_point(data=unnest(allbeststats,pctbias),aes(simdte,pctbias,fill=mdlpreds),shape=23,color='red',position=position_jitterdodge(),size=2,show.legend=F)+
+  scale_fill_brewer(palette='Paired',
+                    labels=c('PHV','PHV-FSCA','PHV-ASO','PHV-ASO-FSCA'))+
+  labs(x='Simulation Date',
+       y='%Bias')+
+  guides(fill='none')+
+  theme(legend.justification=c(0,1),
+        legend.position=c(0,1),
+        strip.background=element_blank(),
+        strip.text=element_text(face='bold',size=16),
+        panel.border=element_rect(size=0.5,linetype='solid',color='grey30'))
+# pctbiasbxp
+```
+
+```{r}
+pg_bxp <- plot_grid(r2bxp,pctmaebxp,pctbiasbxp,nrow=3,ncol=1, labels='auto',label_size=24,align='h')
+pg_bxp
+save_plot(pg_bxp,
+          filename='figs/allmodelboxplots_r2-pctmae-pctbias.pdf',
+          nrow=3,
+          ncol=1,
+          base_height=9,
+          base_aspect_ratio = 1.5)
+```
+
 
 
 # are the differences in patterns of fsca and swe similar? can fsca patterns be used to pick the date to predict swe?
@@ -410,16 +705,19 @@ ssr2 <-
 
 g <- 
   ggplot(snow_stats_otheryrs,aes(x=fsca,y=swe))+
-  geom_point()+
-  geom_smooth(method='lm')+
+  geom_point(aes(color=mdlyr))+
+  geom_smooth(method='lm',color='black')+
+  guides(color=guide_legend('Model Yr'))+
   geom_text(data=ssr2,aes(x,y,label=label),parse=TRUE,hjust=0,vjust=1,nudge_x=-0.01,nudge_y=0.05)+#,fill='white',alpha=0.5,label.padding = unit(0.2, "lines"), label.r = unit(0.15, "lines"),label.size = 0.1)+
   facet_wrap(~simdte,scales='free')+
   labs(x='pixel-wise fSCA similarity',
        y='pixel-wise SWE similarity')+
   theme(strip.background=element_blank(),
-        strip.text=element_text(face='bold'))
+        strip.text=element_text(face='bold'),
+        legend.justification=c(1,0),
+        legend.position=c(.99,0.0))
 
-ggsave(g,filename='figs/swesimilarity_fscasimilarity.pdf',width=12,height=10)
+ggsave(g,filename='figs/swesimilarity_fscasimilarity_color.pdf',width=12,height=10)
 
 
 
@@ -482,7 +780,7 @@ basinstats <-
 
 # prediction errors
 l=list(bestphv,bestphvfsca,bestphvaso,bestphvasofsca)
-ev=c('r2','pctmae')
+ev=c('r2','pctmae','pctbias')
 mylist=lapply(l,FUN=function(x){
   lapply(ev,FUN=function(v1) list(x,v1))
 }) %>% unlist(recursive=F)#or purrr::flatten
@@ -689,7 +987,6 @@ ggplot()+
 
 ```
 
-
 ```{r fun-prederrors-fsca}
 plot_error_fsca <- function(alldF,errorvar){
   if(errorvar=='r2') {
@@ -697,11 +994,16 @@ plot_error_fsca <- function(alldF,errorvar){
     errlab='r^2'
     leg=theme(legend.justification=c(1,0),
               legend.position=c(1,0))
-  } else {
+  } else if(errorvar=='pctmae'){
     yax=coord_cartesian()#coord_cartesian(ylim=c(0,200))
     errlab='"%"*MAE'
     leg=theme(legend.justification=c(1,1),
               legend.position=c(1,1))
+  } else if(errorvar=='pctbias'){
+    yax=coord_cartesian()#coord_cartesian(ylim=c(0,200))
+    errlab='"%"*Bias'
+    leg=theme(legend.justification=c(1,0),
+              legend.position=c(1,0))
   }
   errlab=parse(text = paste0(errlab,'~of~prediction'))
 
@@ -790,11 +1092,14 @@ stargazer(bestfitlines,type='html',ci=FALSE,flip=F,
 ```{r plot-allprederrors-fscapattern, results='asis',fig.width=24}
 #,fig.height=2*24}
 l2=list(phvstats,phvfscastats,phvasostats,phvasofscastats)
-ev=c('r2','pctmae')
+ev=c('r2','pctmae','pctbias')
 mylistall=lapply(l2,FUN=function(x){
   lapply(ev,FUN=function(v1) list(x,v1))
 }) %>% unlist(recursive=F)#or purrr::flatten
 
+```
+
+```{r fscastats_similarity}
 
 #use mylist from other error plots above
 fscadata2plot_all <-
@@ -824,10 +1129,9 @@ myplots_all <-
 # plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
 # plot_grid(plotlist=myplots_all[7:8],ncol=2,align='hv')
 
-pg=plot_grid(plotlist=myplots_all,ncol=2,align='hv',labels=paste0('(',seq(1,16,1),')'))
+pg=plot_grid(plotlist=myplots_all,ncol=3,align='hv',labels=paste0('(',seq(1,16,1),')'))
 # show(pg)
-save_plot(pg,nrow=8,ncol=2,base_width=12,filename = 'figs/so_many_fscaplots.pdf')
-
+save_plot(pg,nrow=8,ncol=2,base_width=18,filename = 'figs/so_many_fscaplots2.pdf')
 ```
 
 see "figs/so_many_fscaplots.pdf" for all plots
@@ -898,9 +1202,131 @@ stargazer(bind_cols(r2slp,pctmslp),
 
 ```
 
+
+```{r swestats_similarity}
+#use mylist from other error plots above
+swedata2plot_all <-
+  lapply(X=mylistall,FUN=function(lst){
+    # print(head(lst))
+    mdldF=lst[[1]]
+    errorvar=lst[[2]]
+    # print(errorvar)
+    alldF <-
+      mdldF %>%
+      left_join(swestats) %>%
+      gather(fscametricvar,fscametricval,mae,mse) %>%
+        filter(simyr!=mdlyr)
+    return(list(alldF,errorvar))
+  })
+
+
+myplots_all <-
+  lapply(swedata2plot_all,FUN=function(lst){
+    dF=lst[[1]]
+    errorvar=lst[[2]]
+    g <- plot_error_fsca(dF %>% filter(fscametricvar=='mae'),errorvar)+
+      facet_wrap(~simdte,scales='free')
+    if(errorvar=='pctmae') g <- g + theme(legend.position=c(.98,.13))
+    return(g)
+  })
+# plot_grid(plotlist=myplots_all[3:4],ncol=2,align='hv')
+# plot_grid(plotlist=myplots_all[7:8],ncol=2,align='hv')
+
+pg=plot_grid(plotlist=myplots_all,ncol=3,align='hv',labels=paste0('(',seq(1,16,1),')'))
+# show(pg)
+save_plot(pg,nrow=8,ncol=3,base_width=18,filename = 'figs/so_many_sweplots2.pdf',limitsize=F)
+
+
+```
+
+## Table of significant slopes
+
+```{r table_slopes, results='asis', fig.width=24}
+
+slopedf <-
+  bind_rows(
+    lapply(swedata2plot_all,function(lst){
+      dF=lst[[1]]
+      errorvar=lst[[2]]
+      myform=as.formula(paste(errorvar,'~fscametricval'))
+      newlist <-
+        dF %>%
+        filter(fscametricvar=='mae') %>%
+        split(.$simdte) %>%
+        map(~lm(myform,data=.)) %>%
+        map(tidy)
+      bind_rows(newlist) %>% mutate(simdte=rep(names(newlist),each=2),
+                                    errorvar,
+                                    mdlpreds=rep(unique(dF$mdlpreds),2*length(newlist)))
+    })
+  )
+
+r2slopes <-
+  slopedf %>%
+  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>%
+  filter(term!='(Intercept)',errorvar=='r2') %>%
+  spread(errorvar,estimate)
+
+r2slp <-
+  r2slopes %>%
+  select(simdte,mdlpreds,r2,p.value) %>%
+  rename(slope=r2) %>%
+  mutate(slope=ifelse(p.value<=0.05,sprintf(fmt='%.02f',slope),'-'),
+         mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')),
+         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>%
+  select(-p.value) %>%
+  spread(mdlpreds,slope) %>%
+  mutate(sep='| ')
+
+
+pctmaeslopes <-
+  slopedf %>%
+  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>%
+  filter(term!='(Intercept)',errorvar=='pctmae') %>%
+  spread(errorvar,estimate)
+
+pctmslp <-
+  pctmaeslopes %>%
+  select(simdte,mdlpreds,pctmae,p.value) %>%
+  rename(slope=pctmae) %>%
+  mutate(slope=ifelse(p.value<=0.05,sprintf(fmt='%.02f',slope),'-'),
+         mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')),
+         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>%
+  select(-p.value) %>%
+  spread(mdlpreds,slope)%>%
+  mutate(sep='| ')
+
+pctbiasslopes <-
+  slopedf %>%
+  select(simdte,term,estimate,p.value,errorvar,mdlpreds) %>%
+  filter(term!='(Intercept)',errorvar=='pctbias') %>%
+  spread(errorvar,estimate)
+
+pctbslp <-
+  pctbiasslopes %>%
+  select(simdte,mdlpreds,pctbias,p.value) %>%
+  rename(slope=pctbias) %>%
+  mutate(slope=ifelse(p.value<=0.05,sprintf(fmt='%.02f',slope),'-'),
+         mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')),
+         simdte=as.character(strftime(strptime(simdte,'%Y%m%d'),'%Y-%m-%d'))) %>%
+  select(-p.value) %>%
+  spread(mdlpreds,slope)
+
+
+stargazer(bind_cols(r2slp,pctmslp,pctbslp),
+          type='html',
+          summary=FALSE,
+          rownames=FALSE,
+          no.space=TRUE,
+          out = 'output/prederror_slopes_allerrors-swemae2.html')
+
+```
+
+
+
 ## combine pred error best fit lines by mdlpreds, plot mean +/- se
 
-```{r plot_combinedslopes, fig.height=12}
+```{r plot_combinedslopes_fsca, fig.height=12}
 
 ## --- to look at the regression of all the data at once ----
 
@@ -1051,7 +1477,7 @@ g1=plot_cbd(combinedslopedf,'r2')
 g2=plot_cbd(combinedslopedf,'pctmae')
 pg=plot_grid(g1,g2,align='v',ncol=1,nrow=2,labels='auto',label_size=20)
 pg
-save_plot(plot=pg,filename = 'figs/xdate_meanfit.pdf',nrow=2, base_width=12)
+save_plot(plot=pg,filename = 'figs/xdate_meanfit_fscasimilarity.pdf',nrow=2, base_width=12)
 
 combinedslopedf %>%
   group_by(mdlpreds,errorvar) %>%
@@ -1063,6 +1489,156 @@ combinedslopedf %>%
 
 ```
 
+```{r plot_combinedslopes_swe, fig.height=12}
+
+## fit bestline trhough each date separately to create ensemble. plot mean and se below
+lst=swedata2plot_all[[1]]
+slopedf <-
+  bind_rows(
+    lapply(swedata2plot_all,function(lst){
+      dF=lst[[1]]
+      errorvar=lst[[2]]
+      myform=as.formula(paste(errorvar,'~fscametricval'))
+      newlist <-
+        dF %>%
+        filter(fscametricvar=='mae') %>%
+        split(.$simdte) %>%
+        map(~lm(myform,data=.)) %>%
+        map(function(obj) {
+          newdata=data.frame(fscametricval=seq(0,1,.01))
+          if(glance(obj)$p.value<=0.05){
+            data_frame(fscamae=seq(0,1,0.01),
+                       pred=predict(object=obj,newdata=newdata)
+            )} else {
+              # print(obj$model)
+            data_frame(fscamae=seq(0,1,0.01),
+                       pred=mean(obj$model[,1]))
+            }
+            })
+
+      bind_rows(newlist,.id='simdte') %>%
+        mutate(errorvar,
+               mdlpreds=unique(dF$mdlpreds))
+    })
+  )
+
+tt=slopedf %>%
+  group_by(mdlpreds,errorvar,simdte) %>%
+  nest() %>%
+  mutate(obj=map(data,~lm(pred~fscamae,data=.)),
+         tdy=map(obj,tidy),
+         slope=map(tdy,function(x) x %>% select(term,estimate,p.value) %>% filter(term=='fscamae'))
+  ) %>%
+  unnest(slope,.drop=T)
+
+
+# differences in slope between fsca models ARE NOT statistically different for pctmae. yes for r2
+print(
+  tt %>%
+  filter(mdlpreds=='phvasofsca' | mdlpreds=='phvfsca') %>%
+  spread(mdlpreds,estimate) %>%
+  split(.$errorvar) %>%
+  map(function(x) t.test(x$phvfsca,x$phvasofsca))
+)
+
+combinedslope_stats <-
+  tt %>%
+  split(list(.$mdlpreds,.$errorvar)) %>%
+  map_df(function(x) tidy(t.test(x$estimate)),.id='facet') %>% separate(facet,into=c('mdlpreds','errorvar'))
+
+mdf <-
+  combinedslope_stats %>%
+  select(mdlpreds,errorvar,m=estimate,p.value) %>%
+  arrange(mdlpreds,errorvar) %>%
+  ungroup %>%
+  mutate(x=0,
+         y=c(1000,900,0,1000,900,0,1000,900,0,1000,900,0),
+         label=paste('slope =',sprintf(fmt='%.2f',m),'\np = ',sprintf(fmt='%.2f',p.value))
+  )
+mdf
+
+combinedslopedf <-
+  slopedf %>%
+  group_by(mdlpreds,errorvar,fscamae) %>%
+  summarise(avg=mean(pred),
+            se=sd(pred)/sqrt(n()),
+            u=avg+se,
+            l=avg-se)
+
+
+plot_cbd=function(dF,errorvar){
+  if(errorvar=='r2') {
+    errlab='r^2'
+    xlabel=NULL
+    leg=theme(axis.title.x=element_blank(),
+              axis.text.x=element_blank(),
+              axis.ticks.x=element_blank(),
+              strip.text=element_text(size=18,face='bold'),
+              strip.background=element_rect(fill=NA,color='black')# plot.margin=unit(c(7,7,0,7),'pt')
+    )
+  } else if(errorvar=='pctmae'){
+    errlab='"%"*MAE'
+    xlabel='pixel-wise SWE similarity'
+    leg=theme(strip.background=element_blank(),
+              strip.text=element_blank(),
+              axis.title.x=element_text(size=18),
+              axis.text.x=element_text(size=16, angle=45, hjust=1)
+              # plot.margin=unit(c(-7,7,7,7),'pt')
+    ) 
+    } else if(errorvar=='pctbias'){
+    errlab='"%"*Bias'
+    xlabel='pixel-wise SWE similarity'
+    leg=theme(strip.background=element_blank(),
+              strip.text=element_blank(),
+              axis.title.x=element_text(size=18),
+              axis.text.x=element_text(size=16, angle=45, hjust=1)
+    )
+              # plot.margin=unit(c(-7,7,7,7),'pt')
+    }
+  errlab=parse(text = paste0(errlab,'~of~prediction'))
+
+  errorvar1=errorvar
+  mdf1=mdf %>% filter_(~errorvar==errorvar1) %>% 
+    mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
+  slopedf1=slopedf %>% 
+    filter_(~errorvar==errorvar1,~pred<1500) %>% 
+    mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
+  dF_grp <-
+    dF %>%
+    ungroup %>%
+    filter_(~errorvar==errorvar1) %>% 
+    mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca')))
+
+  ggplot()+
+    geom_line(data=slopedf1,aes(x=fscamae,y=pred,group=simdte),color='grey90')+
+    geom_ribbon(data=dF_grp,aes(x=fscamae,ymin=l,ymax=u), fill='grey10',alpha=0.5)+
+    geom_path(data=dF_grp,aes(x=fscamae,y=avg),size=1.5,color='blue')+
+    geom_text(data=mdf1,aes(x,y,label=label),hjust=0,vjust=0,size=6)+
+    facet_grid(~mdlpreds,scales='fixed', labeller=labeller(mdlpreds=tostring))+
+    labs(x=xlabel,
+         y=errlab)+
+    leg+
+    theme(axis.text.y=element_text(size=16),
+          axis.title.y=element_text(size=18))
+}
+
+tostring=as_labeller(c('phv'='PHV','phvfsca'='PHV-FSCA','phvaso'='PHV-ASO','phvasofsca'='PHV-ASO-FSCA'))
+g1=plot_cbd(combinedslopedf,'r2')
+g2=plot_cbd(combinedslopedf,'pctmae')
+g3=plot_cbd(combinedslopedf,'pctbias')
+pg=plot_grid(g1,g2,g3,align='v',ncol=1,nrow=3,labels='auto',label_size=20)
+pg
+save_plot(plot=pg,filename = 'figs/xdate_meanfit_swesimilarity.pdf',nrow=3, base_width=12)
+
+combinedslopedf %>%
+  group_by(mdlpreds,errorvar) %>%
+  summarise(mean(se),
+            min(se),
+            max(se),
+            max(se)-min(se))
+
+
+```
 
 # compare best pred vs lowestfscamae pred
 
@@ -1072,10 +1648,9 @@ combo2predict <-
   fscastats %>%
   filter(mdlyr!=simyr) %>%
   group_by(simdte) %>%
-  summarise(mdldte=mdldte[which.min(mae)]
-  )
-
-mae_pred=left_join(combo2predict,phv) %>% group_by(simdte) %>% nest()
+  # summarise(mdldte=mdldte[which.min(mae)])
+  do(data_frame(mae=.$mae[order(.$mae)[1:1]],#can increase to see all the x lowest fscamae dates
+                mdldte=.$mdldte[order(.$mae)[1:1]]))
 
 fscamae_stats <-
   bind_rows(
@@ -1086,17 +1661,60 @@ fscamae_stats <-
   ) %>%
   mutate(from='lowestfscamae')
 
+
+r2df_all=data_frame()
+pctmaedf_all=data_frame()
+pctbiasdf_all=data_frame()
+irow=1
+for(irow in seq_len(nrow(fscamae_stats))){
 r2df <-
-  fscamae_stats %>%
-  select(-pctmae,-mdlyr,-mdldte) %>%
+  fscamae_stats[irow,] %>%
+  select(-pctbias,-pctmae,-mdlyr) %>%
   spread(from,r2) %>%
   mutate(errorvar='r2')
+r2df_all=bind_rows(r2df_all,r2df)
 
 pctmaedf <-
-  fscamae_stats %>%
-  select(-r2,-mdlyr,-mdldte) %>%
+  fscamae_stats[irow,] %>%
+  select(-r2,-pctbias,-mdlyr) %>%
   spread(from,pctmae) %>%
   mutate(errorvar='pctmae')
+pctmaedf_all=bind_rows(pctmaedf_all,pctmaedf)
+
+pctbiasdf <-
+  fscamae_stats[irow,] %>%
+  select(-r2,-pctmae,-mdlyr) %>%
+  spread(from,pctbias) %>%
+  mutate(errorvar='pctbias')
+pctbiasdf_all=bind_rows(pctbiasdf_all,pctbiasdf)
+}
+
+## ------ this block I was trying to see if there was a way to identify outlier fscamae datapoints by predicting swe for several of the lowest fscamae dates and comparing cvswe
+# phvfsca_data <- 
+#   phvfsca %>%
+#   mutate(mdlyr=substr(mdldte,1,4),
+#          simyr=substr(simdte,1,4)) %>%
+#   filter(simyr!=mdlyr) %>% 
+#   group_by(simdte,mdldte) %>% 
+#   nest()
+# 
+# outlierCheck=function(cvswe,avgcv,secv){
+#    print(cvswe)
+#   # print(avgcv)
+#   if(cvswe>(avgcv+secv) | cvswe<(avgcv-secv)) return(TRUE)
+# }
+# inner_join(pctmaedf_all %>% filter(mdlpreds=='phvfsca'),phvfsca_data,by=c('simdte','mdldte')) %>% 
+#   group_by(simdte,mdldte,mdlpreds) %>% 
+#   mutate(cvswe=map_dbl(data,function(dF){sd(dF$swehat,na.rm=T)/mean(dF$swehat,na.rm=T)}),
+#          avgswe=map_dbl(data,function(dF){mean(dF$swehat,na.rm=T)})) %>% 
+#   select(-data) %>% 
+#   group_by(simdte) %>%  
+#   mutate(avgcv=mean(cvswe),
+#          secv=sd(avgswe)) %>% 
+#   group_by(simdte,mdldte,mdlpreds) %>% 
+#   mutate(outlier=ifelse(isTRUE(outlierCheck(cvswe,avgcv,secv)),TRUE,FALSE)
+# ) %>% View
+## ------
 
 best <-
   bind_rows(
@@ -1108,17 +1726,82 @@ lapply(mylist,function(lst){
     spread_('from',errorvar) %>%
     mutate(errorvar=errorvar)
 })
-) %>% select(-mdldte,-mdlyr)
+) %>% select(-mdlyr,-mdldte)
+
 
 diff_df <-
-  full_join(bind_rows(r2df,pctmaedf),best) %>%
+  full_join(bind_rows(r2df_all,pctmaedf_all,pctbiasdf_all),best) %>%
   mutate(diff=lowestfscamae-bestpred) %>%
   gather(var,val,bestpred,lowestfscamae,diff) %>%
   mutate(valtype=ifelse(var=='diff','diff','val'))
 ```
 
+## summarise selected real-time model performance
 
-```{r r2compare, results='asis', fig.width=24}
+```{r summary_realtime}
+rt_preds <- left_join(combo2predict,phvfscastats)
+  
+rt_preds %>% 
+  ungroup %>% 
+  summarise(
+    mean(r2),
+    mean(predmae),
+    mean(rmse),
+    mean(pctmae),
+    mean(pctbias)
+  ) %>% 
+  kable(.,digits=2,
+        caption='realtime model summary phvfsca')
+
+rt_preds %>% 
+  group_by(simyr) %>% 
+summarise(
+    mean(r2),
+    mean(predmae),
+    mean(rmse),
+    mean(pctmae),
+    mean(pctbias)
+  ) %>% 
+  kable(.,digits=2,
+        caption='realtime model summary phvfsca by year')
+  
+
+```
+
+```{r compare_phvfsca-phvasofsca}
+pmsp <- diff_df %>% filter(mdlpreds=='phvfsca'|mdlpreds=='phvasofsca',valtype=='diff',errorvar=='pctmae') %>% spread(mdlpreds,val)
+
+pmsp %>% 
+  mutate(bettermp=ifelse(phvfsca>phvasofsca,0,1),
+         pfgt10=ifelse(phvfsca>10,1,0),
+         pafgt10=ifelse(phvasofsca>10,1,0)) %>% 
+  group_by(errorvar) %>% 
+  summarise(
+    sum(bettermp),
+    sum(pfgt10),
+    sum(pafgt10)
+  )
+
+
+pbsp <- diff_df %>% filter(mdlpreds=='phvfsca' | mdlpreds=='phvasofsca',valtype=='diff',errorvar=='pctbias') %>% spread(mdlpreds,val)
+
+View(pbsp)
+pbsp %>% 
+  mutate(bettermp=ifelse(phvfsca>phvasofsca,0,1),
+         pfgt10=ifelse(phvfsca>10,1,0),
+         pafgt10=ifelse(phvasofsca>10,1,0)) %>% 
+  group_by(errorvar) %>% 
+  summarise(
+    sum(bettermp),
+    sum(pfgt10),
+    sum(pafgt10)
+  )
+
+
+
+```
+
+```{r plot_compare, results='asis', fig.width=24}
 makeplot_fun=function(mdlpreds,errorvar,valtype,data){
   mytitle=function(mdlpreds){
     if(mdlpreds=='phv') myt='PHV'
@@ -1253,16 +1936,17 @@ phvfsca_r2 <- plot_grid(gglist[[15]],
 r2plots <- plot_grid(phv_r2,phvfsca_r2,phvaso_r2,phvasofsca_r2,nrow=1,ncol=4)
 pctmaeplots <- plot_grid(phv_pctmae,phvfsca_pctmae,phvaso_pctmae,phvasofsca_pctmae,nrow=1,ncol=4)
 allplots <- plot_grid(r2plots,pctmaeplots,nrow=2,ncol=1,labels='auto',label_size=36)
-# allplots
+allplots
 save_plot(allplots,filename='figs/xdate_prederr_comparison.eps',
           nrow=4,
           ncol=4,
           base_width=8)
 
 
+
 ```
 
-```{r r2compare2, results='asis', fig.width=24}
+```{r plot_comparediff, results='asis', fig.width=24}
 makeplot_diffonly=function(mdlpreds,errorvar,valtype,data){
   # print(paste('1:',mdlpreds))
   mytitle=function(mdlpreds){
@@ -1291,6 +1975,10 @@ makeplot_diffonly=function(mdlpreds,errorvar,valtype,data){
     if(errorvar=='pctmae')  {
       errlab='Delta*"%"*MAE'
       ycoord=coord_cartesian(ylim=c(0,200))
+    }
+  if(errorvar=='pctbias')  {
+      errlab='Delta*"%"*Bias'
+      ycoord=coord_cartesian(ylim=c(-250,250))
     }
     ylabel=parse(text=errlab)
     data %>%
@@ -1326,13 +2014,14 @@ gglist=plist2$gg
 
 r2pg <- plot_grid(plotlist=gglist[1:4],nrow=2,align='h')
 pmpg <- plot_grid(plotlist=gglist[5:8],nrow=2,align='h')
-pg2 <- plot_grid(r2pg,pmpg,nrow=2,align='h',labels='auto',label_size=36)
-save_plot(pg2,filename='figs/xdate_prederr_diffonly_vertical.eps',
-nrow=4,
+pbpg <- plot_grid(plotlist=gglist[9:12],nrow=2,align='h')
+pg2 <- plot_grid(r2pg,pmpg,pbpg,nrow=3,align='h',labels='auto',label_size=24)
+save_plot(pg2,filename='figs/xdate_prederr_diffonly_vertical2.eps',
+nrow=6,
 ncol=2,
 base_width=8,
 base_aspect_ratio = .9)
-pg2
+
 
 
 diff_df %>%
@@ -1351,6 +2040,129 @@ diff_df %>%
   kable(digits=2,
         caption='summary stats of r2 for different modeltypes')
 
+```
+
+```{r combine_comparediff-pctmae_pctbiasboxplots}
+pfplot <- 
+  diff_df %>%
+  filter(valtype=='diff',mdlpreds=='phvfsca',errorvar=='pctmae') %>%
+  ggplot()+
+  geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+  coord_cartesian(ylim=c(0,250))+
+  scale_y_continuous(breaks=seq(0,250,50),labels=sprintf('%4s',seq(0,250,50)))+
+  facet_grid(~simyr,scales='free_x')+
+  labs(x='Simulation Date',
+       y=expression(Delta*"%"*MAE),
+       title='PHV-FSCA'
+  )+
+  guides(color='none')+
+  theme_cowplot(font_size=16)+
+  theme(axis.title.x=element_text(),
+        axis.text.x=element_text(angle=45,hjust=1,size=14),
+        strip.text=element_text(face='bold'),
+        strip.background=element_blank(),
+        plot.title=element_text(face='bold',size=18),
+        panel.background=element_rect(),
+        panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+        plot.margin=unit(c(7,7,7,7),'pt')
+  )
+  
+pafplot <- 
+  diff_df %>%
+  filter(valtype=='diff',mdlpreds=='phvasofsca',errorvar=='pctmae') %>%
+  # mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca'))) %>%
+  ggplot()+
+  geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+  coord_cartesian(ylim=c(0,250))+
+  scale_y_continuous(breaks=seq(0,250,50),labels=sprintf('%4s',seq(0,250,50)))+
+  facet_grid(~simyr,scales='free_x')+
+  labs(x='Simulation Date',
+       y=expression(Delta*"%"*MAE),
+       title='PHV-ASO-FSCA'
+  )+
+  theme_cowplot(font_size=16)+
+  theme(axis.title.x=element_text(),
+        axis.text.x=element_text(angle=45,hjust=1,size=14),
+        strip.text=element_text(face='bold'),
+        strip.background=element_blank(),
+        plot.title=element_text(face='bold',size=18),
+        panel.background=element_rect(),
+        panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+        plot.margin=unit(c(7,7,7,7),'pt')
+  )
+
+
+
+pfplot2 <- 
+  diff_df %>%
+  filter(valtype=='diff',mdlpreds=='phvfsca',errorvar=='pctbias') %>%
+  ggplot()+
+  geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+  coord_cartesian(ylim=c(-100,250))+
+  scale_y_continuous(breaks=seq(-100,250,50),labels=sprintf('%4s',seq(-100,250,50)))+
+  facet_grid(~simyr,scales='free_x')+
+  labs(x='Simulation Date',
+       y=expression(Delta*"%"*Bias),
+       title='PHV-FSCA'
+  )+
+  guides(color='none')+
+  theme_cowplot(font_size=16)+
+  theme(axis.title.x=element_text(),
+        axis.text.x=element_text(angle=45,hjust=1,size=14),
+        strip.text=element_text(face='bold'),
+        strip.background=element_blank(),
+        plot.title=element_text(face='bold',size=18),
+        panel.background=element_rect(),
+        panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+        plot.margin=unit(c(7,7,7,7),'pt')
+  )
+  
+pafplot2 <- 
+  diff_df %>%
+  filter(valtype=='diff',mdlpreds=='phvasofsca',errorvar=='pctbias') %>%
+  # mutate(mdlpreds=factor(mdlpreds,levels=c('phv','phvfsca','phvaso','phvasofsca'))) %>%
+  ggplot()+
+  geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+  coord_cartesian(ylim=c(-100,250))+
+  scale_y_continuous(breaks=seq(-100,250,50),labels=sprintf('%4s',seq(-100,250,50)))+
+  facet_grid(~simyr,scales='free_x')+
+  labs(x='Simulation Date',
+       y=expression(Delta*"%"*Bias),
+       title='PHV-ASO-FSCA'
+  )+
+  theme_cowplot(font_size=16)+
+  theme(axis.title.x=element_text(),
+        axis.text.x=element_text(angle=45,hjust=1,size=14),
+        strip.text=element_text(face='bold'),
+        strip.background=element_blank(),
+        plot.title=element_text(face='bold',size=18),
+        panel.background=element_rect(),
+        panel.border=element_rect(fill=NA,color='grey50',linetype='solid',size=.5),
+        plot.margin=unit(c(7,7,7,7),'pt')
+  )
+
+topax=theme(axis.text.x=element_blank(),
+            axis.ticks.x=element_blank(),
+            axis.title.x=element_blank(),
+            plot.margin=unit(c(7,7,0,7),'pt'))
+col1row1 <- plot_grid(pfplot+topax+ggtitle('PHV-FSCA'),pfplot2,
+                      nrow=2,
+                      rel_heights = c(.6,.8),
+                      align='v',
+                      labels='auto',
+                      label_size=20)
+col2row1 <- plot_grid(pafplot+topax+ggtitle('PHV-ASO-FSCA'),pafplot2,
+                      nrow=2,
+                      rel_heights = c(.6,.8),
+                      align='v')
+                      
+diffpg <- plot_grid(col1row1,col2row1,ncol=2, align='hv')
+save_plot(diffpg,
+          filename='figs/prederror_diffbars_best-vs-lowestfscame.pdf',
+          base_width = 10,
+          base_aspect_ratio = 2,
+          nrow=2,
+          ncol=2)
 ```
 
 
@@ -1375,9 +2187,32 @@ diff_df %>%
 #   ggplot()+
 #     geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
 #     coord_cartesian(ylim=c(0,-200))
+
 ```
 
+```{r pctbiascompare, results='asis', fig.height=6}
 
+diff_df %>%
+  filter(valtype=='diff',errorvar=='pctbias') %>%
+  group_by(mdlpreds,var) %>%
+  summarise(mean(val),
+            sd(val)) %>%
+  kable(digits=2,
+        caption='summary stats for differences between pctbias of bestpreds and lowestfscamae pred')
+
+diff_df %>%
+  filter(valtype=='val',errorvar=='pctbias') %>%
+  group_by(errorvar,mdlpreds,var) %>%
+  summarise(mean(val,na.rm=T),
+            sd(val,na.rm=T)) %>%
+  kable(digits=2,
+        caption='summary stats for pctbias different modeltypes')
+
+#   ggplot()+
+#     geom_bar(aes(x=simdte,y=val),stat='identity',position='dodge')+
+#     coord_cartesian(ylim=c(0,-200))
+
+```
 
 # swe and fsca difference for best predictions
 
