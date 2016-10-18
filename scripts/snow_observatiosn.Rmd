@@ -1,0 +1,135 @@
+---
+title: "snow observations"
+author: "Dominik Schneider"
+output:
+  html_document:
+    fig_height: 12
+    fig_width: 16
+    self_contained: true
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(cowplot)
+library(viridis)
+library(broom)
+library(viridis)
+library(cowplot)
+library(RColorBrewer)
+library(knitr)
+library(stargazer)
+library(ggrepel)
+
+
+#must have rprojroot installed from devtools::install_github("krlmlr/rprojroot")
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache=FALSE,echo=FALSE,message = FALSE,warning=FALSE,error=FALSE,hide=TRUE,results='hide')#,fig.height=12,fig.width=12)
+```
+
+
+```{r params}
+ires='500m'
+basin='tuo'
+pathin='output/xdate-modeling/'
+```
+
+
+
+```{r data}
+# forgot to save simulation dates but alldata is saved with every run (both for xdate and splitsample) so use that to add date
+alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
+
+
+```
+
+```{r}
+stats=
+  alldata %>% 
+  group_by(dte,yr) %>% 
+  summarise(avgswe=mean(swe),
+            sdswe=sd(swe),
+            avgfsca=mean(fsca),
+            sdfsca=sd(fsca)) %>% 
+  ungroup %>% 
+  mutate(dte=as.Date(strptime(dte,'%Y%m%d')),
+         dtelabel=strftime(dte,'%d%b')) %>% 
+  arrange(avgswe)
+
+
+```
+
+```{r}
+stats %>% 
+  gather(var, val, avgswe:sdfsca) %>% 
+ggplot(aes(x=dte,y=val,color=var))+
+  geom_point()+
+  geom_path(aes(group=var))+
+  # geom_line(aes(group=yr))+
+  geom_text_repel(aes(label=format(val,digits=2)))+
+  facet_wrap(~yr,scales='free_x')
+
+stats %>% 
+  # gather(var,val,avgswe:sdfsca) %>% 
+  group_by(yr) %>% 
+  mutate(r=avgfsca/avgswe) %>% 
+  summarise(mean(r))
+```
+
+```{r}
+g1=ggplot(stats,aes(x=avgswe,y=sdswe,color=yr))+
+  geom_point()+
+  geom_path()+
+  geom_text_repel(aes(label=dtelabel))+
+  guides(color='none')
+
+
+g2=ggplot(stats,aes(x=avgfsca,y=sdfsca,color=yr))+
+  geom_point()+
+  geom_path()+
+  geom_text_repel(aes(label=dtelabel))+
+  guides(color='none')
+
+g3=ggplot(stats,aes(x=avgfsca,y=sdswe,color=yr))+
+  geom_point()+
+  geom_path()+
+  geom_text_repel(aes(label=dtelabel))+
+  guides(color='none')
+
+g4=ggplot(stats,aes(x=avgswe,y=sdfsca,color=yr))+
+  geom_point()+
+  geom_path()+
+  geom_text_repel(aes(label=dtelabel))+
+  guides(color='none')
+
+g5=ggplot(stats,aes(x=avgfsca,y=avgswe,color=yr))+
+  geom_point()+
+  geom_path()+
+  geom_text_repel(aes(label=dtelabel))+
+  theme(legend.position=c(0,1))
+
+g6=ggplot(stats,aes(x=sdfsca,y=sdswe,color=yr))+
+  geom_point()+
+  geom_path()+
+  geom_text_repel(aes(label=dtelabel))+
+  guides(color='none')
+
+g7=ggplot(stats,aes(x=sdfsca,y=avgswe,color=yr))+
+  geom_point()+
+  geom_path()+
+  geom_text_repel(aes(label=dtelabel))+
+  guides(color='none')
+
+arrange(stats,dte) %>% 
+ggplot(aes(x=sdfsca*avgfsca,y=avgswe,color=yr))+
+  geom_point()+
+  geom_path()+
+  geom_text_repel(aes(label=dtelabel))+
+  guides(color='none')
+
+
+pg=plot_grid(g1,g3,g6,g4,g2,NULL,NULL,g5,g7,ncol=3) 
+  
+save_plot('figs/snowobs-avgsweorder.pdf',pg,ncol=3,nrow=3,base_width=8)
+```
+
