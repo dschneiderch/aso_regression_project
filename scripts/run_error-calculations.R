@@ -10,8 +10,8 @@ source('scripts/functions_modelfitting.R')
 geoarea2='tuo'
 ires='500m'
 fscasource='aso'#needs to be aso if ires < 500m
-pathin='output/splitsample-modeling/'
-pathout='output/splitsample-modeling/'
+pathin='output/splitsample-modeling/20iterations/'
+pathout='output/splitsample-modeling/20iterations/'
 dir.create(pathout,recursive=TRUE)
 
 # functions
@@ -30,12 +30,15 @@ r2 <- function(yobs,yhat){
 pctmae <- function(yobs,yhat){
   mean(abs(yhat-yobs),na.rm=T)/mean(yobs,na.rm=T)*100
 }
-
+pctbias <- function(yobs,yhat){
+  mean(yhat-yobs,na.rm=T)/mean(yobs,na.rm=T)*100
+}
 calc_error <- function(dF){
   dF %>%
     summarise(
       r2=r2(swe,swehat),
-      pctmae=pctmae(swe,swehat)
+      pctmae=pctmae(swe,swehat),
+      pctbias=pctbias(swe,swehat)
     )
 }
 

@@ -36,7 +36,7 @@ pathin='output/splitsample-modeling/20iterations/'
 ```{r data}
 alldata=readRDS(paste0(pathin,'alldata_',ires,'.rds'))
 
-predictions=readRDS(paste0(pathin,'stats_combined_',ires,'.rds'))
+predictions=readRDS(paste0(pathin,'stats_combined_',ires,'-withpctbias-phvmdlsonly.rds'))
 ```
 
 # Error distribution of all aso dates
@@ -51,7 +51,7 @@ mdlstats <-
   group_by(mdldte,asodte,mdlpreds)
 
 mdlstats2 <- mdlstats %>%
-  gather(metricvar,metricval,r2,pctmae)
+  gather(metricvar,metricval,r2,pctmae,pctbias)
 # mdlstats %>%
 # filter(dte!=asodte)
 
@@ -72,6 +72,16 @@ mdlstats2 %>%
   spread(metricvar,avg) %>%
   knitr::kable(.,digits=2,scientific=F,
                caption= 'Mean Statistics')
+
+
+mdlstats2 %>%
+  group_by(metricvar,mdlpreds,yr) %>%
+  summarise(
+    avg=mean(metricval)) %>%
+  spread(metricvar,avg) %>%
+  knitr::kable(.,digits=2,scientific=F,
+               caption= 'Yearl Mean Statistics')
+
 # readr::write_tsv(path=paste0('output/avgmdlstats_phv-bootstrap_aso_',ires,'.txt'))
 
 
@@ -118,11 +128,31 @@ bestpreds %>%
   summarise(
     mean(pctmae),
     sd(pctmae),
+    mean(pctbias),
+    sd(pctbias),
     mean(r2),
     sd(r2),
     N=n()
   ) %>% 
-  knitr::kable(.,digits=2,scientific=F)
+  knitr::kable(.,digits=2,scientific=F,
+               caption='summary of predictsion from best aso date')
+
+bestpreds %>%
+  spread(metricvar,metricval) %>% 
+  group_by(mdlpreds,yr) %>% 
+  # group_by(mdlpreds,metricvar) %>%
+  summarise(
+    mean(pctmae),
+    sd(pctmae),
+    mean(pctbias),
+    sd(pctbias),
+    mean(r2),
+    sd(r2),
+    N=n()
+  ) %>% 
+  knitr::kable(.,digits=2,scientific=F,
+               caption='yearly summary of predictsion from best aso date')
+
 
 r2plt <- 
   bestpreds %>% 

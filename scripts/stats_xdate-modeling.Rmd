@@ -261,7 +261,7 @@ statboxplots('r2')+
 
 ```{r results='asis'}
 unnest(allbeststats,pctmae) %>%
-  select(simdte,mdlpreds,pctmae,mae,rmse,simyr) %>%
+  select(simdte,mdlpreds,pctmae,predmae,rmse,simyr) %>%
   group_by(mdlpreds) %>%
   summarise(mean(pctmae),
             median(pctmae),

@@ -1,0 +1,122 @@
+---
+title: "ASO vs SNODAS Error Metrics"
+author: "Dominik Schneider"
+output:
+  html_document:
+    fig_height: 12
+    fig_width: 16
+    self_contained: true
+    toc: yes
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(raster)
+library(knitr)
+
+#must have rprojroot installed from devtools::install_github("krlmlr/rprojroot")
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache=FALSE,echo=FALSE,message = FALSE,warning=FALSE,error=FALSE,hide=TRUE,results='hide')#,fig.height=12,fig.width=12)
+```
+
+```{r params}
+ires='500m'
+basin='tuo'
+# pathin='output/xdate-modeling/'
+```
+
+```{r}
+
+r2 <- function(yobs,yhat){
+  cor(yobs,yhat,use='complete.obs')^2
+}
+mae <- function(yobs,yhat){
+  mean(abs(yhat-yobs),na.rm=T)
+}
+pctmae <- function(yobs,yhat){
+  mae(yobs,yhat)/mean(yobs,na.rm=T)*100
+}
+mse <- function(yobs,yhat){
+  mean((yhat-yobs)^2,na.rm=T)
+}
+rmse <- function(yobs,yhat){
+  sqrt(mse(yobs,yhat))
+}
+bias <- function(yobs,yhat){
+  mean(yhat-yobs,na.rm=T)
+}
+pctbias <- function(yobs,yhat){
+  bias(yobs,yhat)/mean(yobs,na.rm=T)*100
+}
+```
+
+```{r import_swe}
+snodasfn=dir('data/swe/snodas/','.tif$',full.names=T)
+snodas_stack=raster::stack(snodasfn)
+
+asofn=dir('data/swe',glob2rx(paste0(basin,'_',ires,'*.tif$')),full.names=T)
+aso_stack=raster::stack(asofn)
+aso_stack=aggregate(aso_stack,fact=2)
+
+diff_stack=snodas_stack-aso_stack
+
+# diff <- as.data.frame(diff_stack,xy=T) %>%
+#   tbl_df %>%
+#   gather(dte,swediff,-x,-y) %>%
+#   separate(dte,into=c('basin','res','dte')) %>%
+#   bind_cols(
+#     as.data.frame(aso_stack) %>%
+#       gather(dte,aso) %>%
+#       dplyr::select(aso)
+#   )
+```
+
+```{r assemble_df}
+asodf=as.data.frame(aso_stack,xy=T) %>% 
+  tbl_df %>% 
+  mutate(x=as.character(x),
+         y=as.character(y)) %>% 
+  gather(source,obs,-x,-y) %>% 
+  separate(source,into=c('basin','res','dte')) %>% 
+  dplyr::select(-res)
+
+snodasdf=as.data.frame(snodas_stack,xy=T) %>% 
+  tbl_df %>% 
+  mutate(x=as.character(x),
+         y=as.character(y)) %>% 
+  gather(source,swehat,-x,-y) %>% 
+  separate(source,into=c('basin','res','dte'))
+  
+diffdf <- full_join(asodf,snodasdf) %>% 
+  mutate(diff=swehat-obs,
+         simyr=substr(dte,1,4))
+
+```
+
+```{r results='asis'}
+diffstats <- 
+  diffdf %>% 
+  filter(dte!='20140605') %>% 
+  group_by(simyr,dte) %>% 
+  summarise(pctbias=pctbias(obs,swehat),
+            pctmae=pctmae(obs,swehat),
+            r2=r2(obs,swehat))
+
+diffstats %>% 
+  ungroup() %>% 
+  summarise(mean(pctbias),
+            mean(pctmae),
+            mean(r2)) %>% 
+  kable(.,digits=2,
+        caption='summary stats for snodas vs aso')
+
+diffstats %>% 
+  group_by(simyr) %>% 
+  summarise(mean(pctbias),
+            mean(pctmae),
+            mean(r2)) %>% 
+  kable(.,digits=2,
+        caption='yearly summary for snodas vs aso')
+
+```
+
